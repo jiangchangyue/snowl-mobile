@@ -73,7 +73,7 @@ Reasoning:
   - `wrapped_result.json`
   - `steps/*.model_response.{txt,json}`
   - top-level `steps/*.jpg|xml` now prefer the post-action observation that follows each Mobile-Agent-E action, which is closer to the existing Open-AutoGLM pair artifact layout
-- minimal config: [configs/integrations/mobile_agent_e/minimal.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/integrations/mobile_agent_e/minimal.yml)
+- canonical checked-in run config: [configs/runs/mobile_agent_e_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/mobile_agent_e_mobilesafetybench.yml)
 - canonical real run config: [mobile_agent_e_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/mobile_agent_e_mobilesafetybench.yml)
 
 ## Validation commands
@@ -81,19 +81,17 @@ Reasoning:
 ```bash
 PYTHONPATH=src python3 -m snowl_mobile inspect-repo agent references/agents/MobileAgent/Mobile-Agent-E
 PYTHONPATH=src python3 -m snowl_mobile registry list-agents --metadata
-PYTHONPATH=src python3 -m snowl_mobile validate-config configs/integrations/mobile_agent_e/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile plan configs/integrations/mobile_agent_e/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile dry-run configs/integrations/mobile_agent_e/minimal.yml --output-dir /tmp/snowl-mobile-mobile-agent-e
 PYTHONPATH=src python3 -m snowl_mobile validate-config configs/runs/mobile_agent_e_mobilesafetybench.yml
 PYTHONPATH=src python3 -m snowl_mobile plan configs/runs/mobile_agent_e_mobilesafetybench.yml
+PYTHONPATH=src python3 -m snowl_mobile dry-run configs/runs/mobile_agent_e_mobilesafetybench.yml --output-dir /tmp/snowl-mobile-mobile-agent-e
 SNOWL_TASK_SELECTOR='task_category=text_message_sending,task_id=low_risk_001,limit=1' PYTHONPATH=src python3 -m snowl_mobile run configs/runs/mobile_agent_e_mobilesafetybench.yml --device-mode fake --output-dir /tmp/snowl-mobile-mobile-agent-e-run
 ```
 
 For the first real smoke run, prefer:
 
-- keep your existing `PHONE_AGENT_BASE_URL`, `PHONE_AGENT_API_KEY`, and `PHONE_AGENT_MODEL`
+- pass `--base-url`, `--api-key`, `--model-name`, and `--max-steps` directly on the `snowl-mobile run` command
 - set `MOBILE_AGENT_E_HOME=<repo path>`
-- set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`
+- rely on the platform's default lightweight perception, or set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0` only if you intentionally want the full perception stack
 - `MOBILE_AGENT_E_ADB_PATH=<full path to adb>` if the default `adb` command does not see your emulator
 
 Only add `MOBILE_AGENT_E_BASE_URL`, `MOBILE_AGENT_E_API_KEY`, or `MOBILE_AGENT_E_REASONING_MODEL` if Mobile-Agent-E should use a different reasoning endpoint from Open-AutoGLM.
@@ -104,7 +102,7 @@ For the canonical run config, the current checked-in recommendations are:
 - start with `SNOWL_TASK_SELECTOR='task_category=text_message_sending,task_id=low_risk_001,limit=1'`
 - `pair_runtime_recipes[0].bridge_id = mobile_agent_e__mobilesafetybench`
 - `task_source.selector = all`
-- `batch_size = 1`
+- `batch_size` is overridden at run time with `--batch-size`, plus one `--adb-serial` per live emulator
 - `device_mode = existing_device`
 - `artifacts.level = standard`
 - `max_steps = 20`

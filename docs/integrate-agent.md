@@ -130,7 +130,7 @@ PYTHONPATH=src python3 -m snowl_mobile scaffold-agent-package \
 
 - 本地 clone 路径：`references/agents/Open-AutoGLM/`
 - 平台 adapter id：`open_autoglm`
-- 最小配置：[configs/integrations/autoglm/minimal.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/integrations/autoglm/minimal.yml)
+- 当前 canonical checked-in run config：[configs/runs/autoglm_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/autoglm_mobilesafetybench.yml)
 - 具体限制与分析：[docs/integrations/open-autoglm.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/docs/integrations/open-autoglm.md)
 
 它的意义不是“以后都按 Open-AutoGLM 特判”，而是作为一个通用参考：未来接入任何真实 agent，仍然优先复用 inspector、capability declaration、contract、scaffold、checklist 和文档，而不是从零开始写一次性 glue code。
@@ -141,7 +141,7 @@ PYTHONPATH=src python3 -m snowl_mobile scaffold-agent-package \
 
 - 本地 clone 路径：`references/agents/MobileAgent/Mobile-Agent-E/`
 - 平台 adapter id：`mobile_agent_e`
-- 最小配置：[configs/integrations/mobile_agent_e/minimal.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/integrations/mobile_agent_e/minimal.yml)
+- 当前 canonical checked-in run config：[configs/runs/mobile_agent_e_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/mobile_agent_e_mobilesafetybench.yml)
 - 具体分析与限制：[docs/integrations/mobile-agent-e.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/docs/integrations/mobile-agent-e.md)
 
 它更适合作为“如何接一个 monolithic research runner”的参考：
@@ -159,7 +159,7 @@ PYTHONPATH=src python3 -m snowl_mobile scaffold-agent-package \
 
 - 本地 clone 路径：`references/agents/MobileAgent/Mobile-Agent-v3.5/`
 - 平台 adapter id：`mobile_agent_v3_5`
-- 最小配置：[configs/integrations/mobile_agent_v3_5/minimal.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/integrations/mobile_agent_v3_5/minimal.yml)
+- 当前 canonical checked-in run config：[configs/runs/mobile_agent_v3_5_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/mobile_agent_v3_5_mobilesafetybench.yml)
 - 具体分析与限制：[docs/integrations/mobile-agent-v3-5.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/docs/integrations/mobile-agent-v3-5.md)
 
 它更适合作为“如何先接一个轻量 mobile_use agent surface，先走 wrapped runner，再把 MobileSafetyBench 生命周期收回 pair bridge”的参考：

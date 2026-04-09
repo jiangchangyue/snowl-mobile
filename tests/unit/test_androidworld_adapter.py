@@ -28,7 +28,6 @@ from snowl_mobile.core.run_context import RunContext
 from snowl_mobile.core.trial_context import TrialContext
 
 
-ANDROIDWORLD_CONFIG = ROOT / "configs" / "integrations" / "androidworld" / "minimal.yml"
 ANDROIDWORLD_RUN_CONFIG = ROOT / "configs" / "runs" / "androidworld_benchmark.yml"
 
 
@@ -49,7 +48,7 @@ class AndroidWorldAdapterTestCase(unittest.TestCase):
 
     def test_task_discovery_uses_androidworld_registry_and_options(self) -> None:
         adapter = AndroidWorldBenchmarkAdapter()
-        spec = load_project_spec(ANDROIDWORLD_CONFIG)
+        spec = load_project_spec(ANDROIDWORLD_RUN_CONFIG)
         run_context = RunContext(
             run_id="androidworld-test-run",
             project_snapshot=spec,
@@ -67,7 +66,7 @@ class AndroidWorldAdapterTestCase(unittest.TestCase):
 
     def test_task_discovery_prefers_materialized_goal_when_worker_python_can_resolve_it(self) -> None:
         adapter = AndroidWorldBenchmarkAdapter()
-        spec = load_project_spec(ANDROIDWORLD_CONFIG)
+        spec = load_project_spec(ANDROIDWORLD_RUN_CONFIG)
         run_context = RunContext(
             run_id="androidworld-test-run",
             project_snapshot=spec,

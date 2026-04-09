@@ -15,6 +15,7 @@ from snowl_mobile.adapters.agents.mobile_agent_e import (
     MobileAgentELiveEvent,
     MobileAgentERunRequest,
     MobileAgentEStepTranscript,
+    mobile_agent_e_lightweight_perception_enabled,
 )
 from snowl_mobile.adapters.bridges.open_autoglm_androidworld_runtime import (
     _copy_external_output,
@@ -47,12 +48,7 @@ from snowl_mobile.schemas.observation import ObservationBundle
 
 
 def _mobile_agent_e_lightweight_perception_enabled() -> bool:
-    return os.environ.get("MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return mobile_agent_e_lightweight_perception_enabled()
 
 
 def _relative_path_under_trial(path_value: str | Path | None, *, trial_dir: Path) -> str | None:

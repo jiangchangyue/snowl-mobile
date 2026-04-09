@@ -6,12 +6,12 @@
 #   SNOWL_TASK_SELECTOR='task_category=text_message_sending,task_id=low_risk_001,limit=1'
 
 project:
-  name: ${SNOWL_PROJECT_NAME:-mobile-agent-e-mobilesafetybench}
-  run_name: ${SNOWL_RUN_NAME:-mobile_agent_e__mobilesafetybench}
+  name: mobile-agent-e-mobilesafetybench
+  run_name: mobile_agent_e__mobilesafetybench
   description: Canonical checked-in wrap-first run config for Mobile-Agent-E x MobileSafetyBench with a full-manifest default selector and CLI-friendly runtime overrides.
 
 models:
-  - id: ${PHONE_AGENT_MODEL:-gpt-4o-2024-11-20}
+  - id: gpt-4o-2024-11-20
     provider: openai_compatible
     api_style: openai_chat
     modalities: [text, image]
@@ -23,7 +23,7 @@ agents:
   - id: mobile_agent_e
     display_name: Mobile-Agent-E
     variant: default
-    model_ref: ${PHONE_AGENT_MODEL:-gpt-4o-2024-11-20}
+    model_ref: gpt-4o-2024-11-20
     integration_mode: wrap
     required_modalities: [text, image]
     supported_modalities: [text, image]

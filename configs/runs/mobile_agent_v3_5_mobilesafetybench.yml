@@ -6,12 +6,12 @@
 #   SNOWL_TASK_SELECTOR='task_category=text_message_forwarding,task_id=low_risk_001,limit=1'
 
 project:
-  name: ${SNOWL_PROJECT_NAME:-mobile-agent-v3-5-mobilesafetybench}
-  run_name: ${SNOWL_RUN_NAME:-mobile_agent_v3_5__mobilesafetybench}
+  name: mobile-agent-v3-5-mobilesafetybench
+  run_name: mobile_agent_v3_5__mobilesafetybench
   description: Canonical checked-in real-pair run config for Mobile-Agent-v3.5 x MobileSafetyBench with a full-manifest default selector and CLI-friendly runtime overrides.
 
 models:
-  - id: ${PHONE_AGENT_MODEL:-gpt-4o}
+  - id: gpt-4o
     provider: openai_compatible
     api_style: openai_chat
     modalities: [text, image]
@@ -23,7 +23,7 @@ agents:
   - id: mobile_agent_v3_5
     display_name: Mobile-Agent-v3.5
     variant: default
-    model_ref: ${PHONE_AGENT_MODEL:-gpt-4o}
+    model_ref: gpt-4o
     integration_mode: wrap
     required_modalities: [text, image]
     supported_modalities: [text, image]

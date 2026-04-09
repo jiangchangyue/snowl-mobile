@@ -89,7 +89,7 @@ The repository is tracking two views at once:
 - the first real agent integration is now present for `Open-AutoGLM`, but it intentionally stops at capability/model-binding mapping, compatibility enforcement, minimal config wiring, and mock wrapped execution rather than full device-backed runtime;
 - the emulator backend now supports real `existing_device` discovery through `adb`, while `managed_avd` remains an explicit contract boundary with fail-fast behavior instead of full automatic lifecycle control;
 - the platform `run` path is no longer dummy-only: when a registered bridge exposes a concrete pair execution path, `run` can execute that bridge through the same config/plan/artifact/summary flow;
-- the first real pair config now exists at `configs/runs/autoglm_mobilesafetybench_minimal.yml`, with `batch_size=1`, `existing_device`, one selected task, and explicit pair recipe / bridge selection;
+- the first real pair config now exists at `configs/runs/autoglm_mobilesafetybench.yml`, with explicit pair recipe selection, `existing_device` support, and now CLI-overridable batch scheduling for multiple emulators;
 - agent integrations now have a stronger product path: agent repo inspection -> capability/contract/checklist -> package scaffold -> local validation, still without touching any real upstream agent in this phase;
 - pair-specific integrations now have a stronger product path: bridge contract -> pair runtime recipe -> planner diagnostics -> scaffold package, still without touching any real pair runtime in this phase;
 - user-facing real-integration workflow is now documented end to end: clone -> prompt -> scaffold/implementation -> validate/plan/dry-run;

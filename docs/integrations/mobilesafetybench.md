@@ -76,17 +76,17 @@ This keeps benchmark-native semantics intact while still giving the platform one
 
 ## Minimal Validation Path
 
-Config:
+Canonical checked-in run config:
 
-- `configs/integrations/mobilesafetybench/minimal.yml`
+- `configs/runs/autoglm_mobilesafetybench.yml`
 
 Suggested commands:
 
 ```bash
 PYTHONPATH=src python3 -m snowl_mobile inspect-repo benchmark references/benchmarks/mobilesafetybench
-PYTHONPATH=src python3 -m snowl_mobile validate-config configs/integrations/mobilesafetybench/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile plan configs/integrations/mobilesafetybench/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile dry-run configs/integrations/mobilesafetybench/minimal.yml --output-dir /tmp/snowl-mobile-msb
+PYTHONPATH=src python3 -m snowl_mobile validate-config configs/runs/autoglm_mobilesafetybench.yml
+PYTHONPATH=src python3 -m snowl_mobile plan configs/runs/autoglm_mobilesafetybench.yml
+PYTHONPATH=src python3 -m snowl_mobile dry-run configs/runs/autoglm_mobilesafetybench.yml --output-dir /tmp/snowl-mobile-msb
 ```
 
 ## Current Limitations

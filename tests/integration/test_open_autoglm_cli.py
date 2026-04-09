@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
-CONFIG = ROOT / "configs" / "integrations" / "autoglm" / "minimal.yml"
+CONFIG = ROOT / "configs" / "runs" / "autoglm_mobilesafetybench.yml"
 REPO = ROOT / "references" / "agents" / "Open-AutoGLM"
 
 
@@ -43,11 +43,16 @@ class OpenAutoGLMCLITestCase(unittest.TestCase):
         self.assertIn('"phone_agent/model/client.py"', completed.stdout)
         self.assertIn('"phone_agent/actions/handler.py"', completed.stdout)
 
+    def _smoke_env(self) -> dict[str, str]:
+        env = self._base_env()
+        env["SNOWL_TASK_SELECTOR"] = "task_category=text_message_sending,task_id=high_risk_001,limit=1"
+        return env
+
     def test_validate_plan_and_dry_run_work_with_open_autoglm_config(self) -> None:
         validate_completed = subprocess.run(
             [sys.executable, "-m", "snowl_mobile", "validate-config", str(CONFIG)],
             cwd=ROOT,
-            env=self._base_env(),
+            env=self._smoke_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -59,7 +64,7 @@ class OpenAutoGLMCLITestCase(unittest.TestCase):
         plan_completed = subprocess.run(
             [sys.executable, "-m", "snowl_mobile", "plan", str(CONFIG)],
             cwd=ROOT,
-            env=self._base_env(),
+            env=self._smoke_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -81,7 +86,7 @@ class OpenAutoGLMCLITestCase(unittest.TestCase):
                     temp_dir,
                 ],
                 cwd=ROOT,
-                env=self._base_env(),
+                env=self._smoke_env(),
                 capture_output=True,
                 text=True,
                 check=False,
@@ -90,7 +95,7 @@ class OpenAutoGLMCLITestCase(unittest.TestCase):
             self.assertIn("Dry-run simulated 1 trial(s)", dry_run_completed.stdout)
             self.assertIn('"succeeded": 1', dry_run_completed.stdout)
 
-            run_dir = Path(temp_dir) / "plan-open-autoglm-minimal"
+            run_dir = Path(temp_dir) / "plan-open_autoglm__mobilesafetybench"
             self.assertTrue((run_dir / "manifest.json").exists())
             self.assertTrue((run_dir / "summary.json").exists())
             summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))

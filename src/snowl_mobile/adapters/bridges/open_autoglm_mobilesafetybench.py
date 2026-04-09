@@ -52,6 +52,16 @@ LOGGER = logging.getLogger(__name__)
 _T = TypeVar("_T")
 _RUNTIME_ENVIRONMENT_LOCK = threading.Lock()
 _SMS_HELPER_PATCH_LOCK = threading.Lock()
+_STDIO_ROUTER_LOCK = threading.Lock()
+_STDOUT_ROUTER: "_ThreadAwareStreamRouter | None" = None
+_STDERR_ROUTER: "_ThreadAwareStreamRouter | None" = None
+_MOBILESAFETYBENCH_PATH_ATTR_BUILDERS: dict[str, Callable[[Path], str]] = {
+    "_WORK_PATH": lambda root: str(root),
+    "_LOG_PATH": lambda root: str(root / "logs"),
+    "_CONFIG_PATH": lambda root: str(root / "asset" / "environments" / "config"),
+    "_SCRIPT_PATH": lambda root: str(root / "asset" / "environments" / "script"),
+    "_RESOURCE_PATH": lambda root: str(root / "asset" / "environments" / "resource"),
+}
 
 
 def _utcnow() -> str:
@@ -100,6 +110,56 @@ class _LiveConsoleTee:
             with contextlib.suppress(Exception):
                 handle.flush()
                 handle.close()
+
+
+class _ThreadAwareStreamRouter:
+    def __init__(self, original_stream: Any) -> None:
+        self._original_stream = original_stream
+        self._local = threading.local()
+
+    @property
+    def original_stream(self) -> Any:
+        return self._original_stream
+
+    @property
+    def encoding(self) -> str:
+        return getattr(self._original_stream, "encoding", "utf-8")
+
+    def push_sink(self, sink: Any) -> None:
+        stack = list(getattr(self._local, "stack", []))
+        stack.append(sink)
+        self._local.stack = stack
+
+    def pop_sink(self) -> None:
+        stack = list(getattr(self._local, "stack", []))
+        if not stack:
+            return
+        stack.pop()
+        if stack:
+            self._local.stack = stack
+            return
+        with contextlib.suppress(AttributeError):
+            del self._local.stack
+
+    def write(self, data: str) -> int:
+        stack = getattr(self._local, "stack", [])
+        if stack:
+            return stack[-1].write(data)
+        return self._original_stream.write(data)
+
+    def flush(self) -> None:
+        stack = getattr(self._local, "stack", [])
+        if stack:
+            stack[-1].flush()
+            return
+        with contextlib.suppress(Exception):
+            self._original_stream.flush()
+
+    def isatty(self) -> bool:
+        return bool(getattr(self._original_stream, "isatty", lambda: False)())
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._original_stream, name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -972,12 +1032,31 @@ class OpenAutoGLMMobileSafetyBenchBridgeAdapter(BaseBridgeAdapter):
                 if repo_str not in sys.path:
                     sys.path.insert(0, repo_str)
             for key, value in env_vars.items():
-                if value and not os.environ.get(key):
+                if value:
                     os.environ[key] = value
+            mobilesafetybench_home = env_vars.get("MOBILE_SAFETY_HOME", "").strip()
+            if mobilesafetybench_home:
+                self._synchronize_mobilesafetybench_module_paths(Path(mobilesafetybench_home))
             if not os.environ.get("APPIUM_BIN", "").strip():
                 resolved_appium = shutil.which("appium")
                 if resolved_appium:
                     os.environ["APPIUM_BIN"] = resolved_appium
+
+    def _synchronize_mobilesafetybench_module_paths(self, repo_root: Path) -> None:
+        repo_root = repo_root.resolve()
+        for module_name, module in list(sys.modules.items()):
+            if module is None:
+                continue
+            if not (
+                module_name == "mobile_safety"
+                or module_name.startswith("mobile_safety.")
+                or module_name == "asset.environments"
+                or module_name.startswith("asset.environments.")
+            ):
+                continue
+            for attr_name, builder in _MOBILESAFETYBENCH_PATH_ATTR_BUILDERS.items():
+                if hasattr(module, attr_name):
+                    setattr(module, attr_name, builder(repo_root))
 
     def _probe_runtime_imports(self) -> list[tuple[str, str, str, str]]:
         checks = (
@@ -2205,14 +2284,46 @@ class OpenAutoGLMMobileSafetyBenchBridgeAdapter(BaseBridgeAdapter):
         *,
         file_paths: list[Path],
     ) -> tuple[_T, str]:
-        tee_stream = _LiveConsoleTee(sys.stdout, file_paths)
+        stdout_router, stderr_router = self._ensure_thread_aware_stdio_routers()
+        tee_stream = _LiveConsoleTee(stdout_router.original_stream, file_paths)
         try:
-            with contextlib.redirect_stdout(tee_stream), contextlib.redirect_stderr(tee_stream):
+            with self._thread_scoped_console_capture(
+                tee_stream=tee_stream,
+                stdout_router=stdout_router,
+                stderr_router=stderr_router,
+            ):
                 result = operation()
         finally:
             tee_stream.flush()
             tee_stream.close()
         return result, tee_stream.getvalue()
+
+    def _ensure_thread_aware_stdio_routers(self) -> tuple[_ThreadAwareStreamRouter, _ThreadAwareStreamRouter]:
+        global _STDOUT_ROUTER, _STDERR_ROUTER
+        with _STDIO_ROUTER_LOCK:
+            if _STDOUT_ROUTER is None:
+                _STDOUT_ROUTER = _ThreadAwareStreamRouter(sys.stdout)
+                sys.stdout = _STDOUT_ROUTER
+            if _STDERR_ROUTER is None:
+                _STDERR_ROUTER = _ThreadAwareStreamRouter(sys.stderr)
+                sys.stderr = _STDERR_ROUTER
+            return _STDOUT_ROUTER, _STDERR_ROUTER
+
+    @contextlib.contextmanager
+    def _thread_scoped_console_capture(
+        self,
+        *,
+        tee_stream: _LiveConsoleTee,
+        stdout_router: _ThreadAwareStreamRouter,
+        stderr_router: _ThreadAwareStreamRouter,
+    ) -> Iterator[None]:
+        stdout_router.push_sink(tee_stream)
+        stderr_router.push_sink(tee_stream)
+        try:
+            yield
+        finally:
+            stderr_router.pop_sink()
+            stdout_router.pop_sink()
 
     def _is_recoverable_uiautomator2_reset_failure(self, error: Exception) -> bool:
         message = str(error).lower()

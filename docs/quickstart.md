@@ -29,7 +29,7 @@ python -m pip install openai pillow numpy
 
 ## 4. Prepare runtime inputs
 
-The CLI no longer auto-loads `.env` or `.env.local`.
+The CLI no longer auto-loads `.env` or `.env.local`, and the repository no longer keeps checked-in `.env.*` templates.
 
 The platform auto-detects repo locations under `references/` and will reuse `appium` from `PATH` when available. For most first runs, you only need to provide model endpoint settings yourself, either through shell exports or directly on the command line.
 
@@ -242,7 +242,7 @@ Recommended order for the first real smoke run:
 
 1. Start an Android emulator manually.
 2. Run `adb devices` and confirm the target serial appears as `device`.
-3. Make sure `MOBILE_AGENT_E_HOME` is resolvable and set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1` for the first smoke run if needed.
+3. Make sure `MOBILE_AGENT_E_HOME` is resolvable. Mobile-Agent-E now defaults to lightweight perception in platform runs; only set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0` if you intentionally want the full perception stack.
 4. Pass `--model-name`, `--base-url`, and `--api-key` on the CLI if you want to override the checked-in defaults without using shell environment variables.
 5. If your shell can see the emulator but the CLI cannot, set `MOBILE_AGENT_E_ADB_PATH` to the exact SDK `adb` binary.
 6. Run `validate-config`, then `plan`, then `run`, then `summarize`.

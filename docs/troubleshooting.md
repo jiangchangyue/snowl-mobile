@@ -52,14 +52,16 @@ The current real pair bridge requires:
 - `PHONE_AGENT_API_KEY`
 - `APPIUM_BIN` only if `appium` is not already on `PATH`
 
-The CLI no longer auto-loads `.env.local`, so either export these in your shell or pass `--base-url`, `--api-key`, and `--model-name` directly to `snowl-mobile run`.
+The CLI no longer auto-loads `.env.local`, and the repository no longer relies on checked-in `.env.*` files. Either export these in your shell yourself or pass `--base-url`, `--api-key`, and `--model-name` directly to `snowl-mobile run`.
+
+If you copy a multi-line shell command, the trailing `\` must be the final character on the line. A line ending like `\\ ` with a space after the backslash breaks continuation in `zsh` and causes errors such as `snowl-mobile: error: unrecognized arguments:` or `zsh: command not found: --max-steps`.
 
 For the current real Mobile-Agent-E x MobileSafetyBench pair path, also check:
 
 - `MOBILE_AGENT_E_HOME`
 - `PHONE_AGENT_BASE_URL` / `PHONE_AGENT_API_KEY`, or Mobile-Agent-E-specific overrides
-- `MOBILE_AGENT_E_CAPTION_API_KEY` if `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION` is not enabled
-- `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1` for the first smoke run if you have not installed the full OCR/grounding stack; this mode now replaces the upstream OCR/icon localization calls with lightweight empty-result shims so the wrapped loop can continue past perception initialization
+- `MOBILE_AGENT_E_CAPTION_API_KEY` if you explicitly disable lightweight perception
+- Mobile-Agent-E now defaults to lightweight perception for platform runs; set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0` only if you intentionally want the full OCR/grounding stack. Lightweight mode replaces the upstream OCR/icon localization calls with lightweight empty-result shims so the wrapped loop can continue past perception initialization
 
 For the current real Mobile-Agent-v3.5 wrapped path, also check:
 
@@ -127,7 +129,7 @@ Common causes:
 - the emulator serial passed through `--adb-serial` is not visible to `adb`
 - the device does not have ADB keyboard style text input support
 - the benchmark environment reset or seeding failed before the Mobile-Agent-E subprocess started
-- if you previously exported `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`, removing it from a config file does not unset the current shell variable; run `unset MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION` before retrying the full perception path
+- if you explicitly want the full perception path, set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0` in the current shell before retrying; otherwise the platform default remains lightweight perception
 - if `trial.log` looks much shorter than the upstream runner transcript, also inspect `raw/mobile_agent_e/runner.stdout.txt`; the pair bridge now reconstructs step summaries into `trial.log` and `raw/mobile_agent_e_mobilesafetybench/steps/*.console.txt`, but the full upstream console stream still lives under `raw/mobile_agent_e/`
 
 For long Mobile-Agent-E full runs, also remember:
@@ -380,7 +382,7 @@ Common causes:
 
 Note:
 
-- the minimal AndroidWorld smoke path now honors `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1` the same way the MobileSafetyBench path does, so a missing `torch` / `modelscope` import during bridge startup usually means the flag is unset in the current shell or the worker process is not seeing your expected env.
+- the AndroidWorld and MobileSafetyBench paths now share the same Mobile-Agent-E lightweight-perception default. If you still see `torch` / `modelscope` import failures during bridge startup, check whether the current shell explicitly set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0`.
 
 ## `run configs/runs/mobile_agent_v3_5_androidworld.yml` fails for Mobile-Agent-v3.5 x AndroidWorld
 
@@ -434,7 +436,7 @@ For the current `mobile_agent_e` minimal adapter config, the normalized platform
 
 See:
 
-- `configs/integrations/mobile_agent_e/minimal.yml`
+- `configs/runs/mobile_agent_e_mobilesafetybench.yml`
 - `docs/integrations/mobile-agent-e.md`
 
 For the current `mobile_agent_v3_5` minimal adapter config, the normalized platform contract is:
@@ -445,7 +447,7 @@ For the current `mobile_agent_v3_5` minimal adapter config, the normalized platf
 
 See:
 
-- `configs/integrations/mobile_agent_v3_5/minimal.yml`
+- `configs/runs/mobile_agent_v3_5_mobilesafetybench.yml`
 - `docs/integrations/mobile-agent-v3-5.md`
 
 ## The run completed, but you cannot find the results

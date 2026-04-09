@@ -36,7 +36,7 @@ from snowl_mobile.schemas.observation import ObservationBundle
 
 
 MOBILE_AGENT_E_REPO = ROOT / "references" / "agents" / "MobileAgent" / "Mobile-Agent-E"
-MOBILE_AGENT_E_CONFIG = ROOT / "configs" / "integrations" / "mobile_agent_e" / "minimal.yml"
+MOBILE_AGENT_E_CONFIG = ROOT / "configs" / "runs" / "mobile_agent_e_mobilesafetybench.yml"
 
 
 class MobileAgentEAdapterTestCase(unittest.TestCase):
@@ -132,6 +132,43 @@ class MobileAgentEAdapterTestCase(unittest.TestCase):
         self.assertEqual(env["MOBILE_AGENT_E_CAPTION_BASE_URL"], "http://localhost:8000/v1/chat/completions")
         self.assertEqual(env["MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION"], "1")
         self.assertIn("-s emulator-5554", env["ADB_PATH"])
+
+    def test_runtime_env_mapping_defaults_to_lightweight_perception_when_unset(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "MOBILE_AGENT_E_API_KEY": "reasoning-token",
+                "MOBILE_AGENT_E_BASE_URL": "http://localhost:8000/v1",
+            },
+            clear=True,
+        ):
+            env = build_mobile_agent_e_runtime_env(
+                provider="openai_compatible",
+                model_id="Qwen/Qwen2.5-VL-72B-Instruct",
+                adb_serial="emulator-5554",
+            )
+
+        self.assertEqual(env["MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION"], "1")
+        self.assertEqual(env["MOBILE_AGENT_E_CAPTION_MODEL"], "Qwen/Qwen2.5-VL-72B-Instruct")
+
+    def test_runtime_env_mapping_respects_explicit_full_perception_opt_out(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "MOBILE_AGENT_E_API_KEY": "reasoning-token",
+                "MOBILE_AGENT_E_BASE_URL": "http://localhost:8000/v1",
+                "MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION": "0",
+            },
+            clear=True,
+        ):
+            env = build_mobile_agent_e_runtime_env(
+                provider="openai_compatible",
+                model_id="Qwen/Qwen2.5-VL-72B-Instruct",
+                adb_serial="emulator-5554",
+            )
+
+        self.assertNotIn("MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION", env)
+        self.assertEqual(env["MOBILE_AGENT_E_CAPTION_MODEL"], "qwen-vl-plus")
 
     def test_runtime_env_mapping_can_fallback_to_phone_agent_endpoint(self) -> None:
         with patch.dict(

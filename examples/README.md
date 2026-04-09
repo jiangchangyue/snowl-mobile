@@ -6,6 +6,7 @@ Additional future-integration example configs now live under `examples/configs/`
 
 Runnable configs for the current first real pair and adapter-specific validations live under `configs/`:
 
-- `configs/integrations/autoglm/minimal.yml`
-- `configs/integrations/mobilesafetybench/minimal.yml`
+- `configs/runs/autoglm_mobilesafetybench.yml`
+- `configs/runs/mobile_agent_e_mobilesafetybench.yml`
+- `configs/runs/mobile_agent_v3_5_mobilesafetybench.yml`
 - `configs/runs/autoglm_mobilesafetybench.yml`

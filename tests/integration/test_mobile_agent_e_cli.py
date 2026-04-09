@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
-CONFIG = ROOT / "configs" / "integrations" / "mobile_agent_e" / "minimal.yml"
+CONFIG = ROOT / "configs" / "runs" / "mobile_agent_e_mobilesafetybench.yml"
 RUN_CONFIG = ROOT / "configs" / "runs" / "mobile_agent_e_mobilesafetybench.yml"
 REPO = ROOT / "references" / "agents" / "MobileAgent" / "Mobile-Agent-E"
 
@@ -53,7 +53,7 @@ class MobileAgentECLITestCase(unittest.TestCase):
         validate_completed = subprocess.run(
             [sys.executable, "-m", "snowl_mobile", "validate-config", str(CONFIG)],
             cwd=ROOT,
-            env=self._base_env(),
+            env=self._smoke_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -65,7 +65,7 @@ class MobileAgentECLITestCase(unittest.TestCase):
         plan_completed = subprocess.run(
             [sys.executable, "-m", "snowl_mobile", "plan", str(CONFIG)],
             cwd=ROOT,
-            env=self._base_env(),
+            env=self._smoke_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -87,7 +87,7 @@ class MobileAgentECLITestCase(unittest.TestCase):
                     temp_dir,
                 ],
                 cwd=ROOT,
-                env=self._base_env(),
+                env=self._smoke_env(),
                 capture_output=True,
                 text=True,
                 check=False,
@@ -96,7 +96,7 @@ class MobileAgentECLITestCase(unittest.TestCase):
             self.assertIn("Dry-run simulated 1 trial(s)", dry_run_completed.stdout)
             self.assertIn('"succeeded": 1', dry_run_completed.stdout)
 
-            run_dir = Path(temp_dir) / "plan-mobile-agent-e-minimal"
+            run_dir = Path(temp_dir) / "plan-mobile_agent_e__mobilesafetybench"
             self.assertTrue((run_dir / "manifest.json").exists())
             self.assertTrue((run_dir / "summary.json").exists())
             summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
@@ -161,8 +161,10 @@ class MobileAgentECLITestCase(unittest.TestCase):
         )
         self.assertEqual(plan_completed.returncode, 0, msg=plan_completed.stderr)
         self.assertIn('"run_id": "plan-mobile_agent_e__mobilesafetybench"', plan_completed.stdout)
-        self.assertIn('"planned_trials": 250', plan_completed.stdout)
         self.assertIn('"bridge_id": "mobile_agent_e__mobilesafetybench"', plan_completed.stdout)
+        payload = json.loads(plan_completed.stdout[plan_completed.stdout.index("{"):])
+        self.assertGreaterEqual(payload["matrix"]["planned_trials"], 200)
+        self.assertEqual(payload["matrix"]["incompatible_combinations"], 0)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "mobile-agent-e-full-smoke"

@@ -42,15 +42,15 @@ Reasoning:
 - backend-aware and vision-aware compatibility checks
 - action normalization into platform `ActionRecord`
 - raw output capture for mock wrapped runs
-- minimal config: [configs/integrations/autoglm/minimal.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/integrations/autoglm/minimal.yml)
+- canonical checked-in run config: [configs/runs/autoglm_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/autoglm_mobilesafetybench.yml)
 
 ## Validation commands
 
 ```bash
 PYTHONPATH=src python3 -m snowl_mobile inspect-repo agent references/agents/Open-AutoGLM
-PYTHONPATH=src python3 -m snowl_mobile validate-config configs/integrations/autoglm/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile plan configs/integrations/autoglm/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile dry-run configs/integrations/autoglm/minimal.yml --output-dir /tmp/snowl-mobile-open-autoglm
+PYTHONPATH=src python3 -m snowl_mobile validate-config configs/runs/autoglm_mobilesafetybench.yml
+PYTHONPATH=src python3 -m snowl_mobile plan configs/runs/autoglm_mobilesafetybench.yml
+PYTHONPATH=src python3 -m snowl_mobile dry-run configs/runs/autoglm_mobilesafetybench.yml --output-dir /tmp/snowl-mobile-open-autoglm
 ```
 
 ## Current limitations
@@ -59,4 +59,4 @@ PYTHONPATH=src python3 -m snowl_mobile dry-run configs/integrations/autoglm/mini
 - no attempt is made in this phase to install upstream dependencies or launch a real model endpoint;
 - runtime isolation is declared through `worker_mode=venv`, but the actual per-agent isolated environment launcher remains the platform's generic shell;
 - only the Android-oriented `adb_appium` platform backend is validated end to end in config/plan/dry-run; HDC and iOS capability are declared from upstream analysis but not yet exercised by the platform runtime;
-- the first real pair bridge for `Open-AutoGLM x MobileSafetyBench` now exists, but it currently runs as an `in_process` bridge path with `batch_size=1` and `existing_device` as the primary supported mode. See [docs/integrations/open-autoglm-mobilesafetybench.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/docs/integrations/open-autoglm-mobilesafetybench.md).
+- the first real pair bridge for `Open-AutoGLM x MobileSafetyBench` now exists, and the `run` path can schedule it across multiple existing emulators with `--batch-size` plus repeated `--adb-serial` values. The pair still runs as an `in_process` bridge path. See [docs/integrations/open-autoglm-mobilesafetybench.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/docs/integrations/open-autoglm-mobilesafetybench.md).

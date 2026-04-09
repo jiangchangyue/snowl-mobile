@@ -246,10 +246,21 @@ monitoring:
         self.assertEqual(spec.models[0].model_id, "Qwen/Qwen3-VL-235B-A22B-Instruct")
         self.assertEqual(spec.agents[0].model_ref, "Qwen/Qwen3-VL-235B-A22B-Instruct")
 
-    def test_mobile_agent_e_minimal_config_loads(self) -> None:
-        spec = load_project_spec(ROOT / "configs" / "integrations" / "mobile_agent_e" / "minimal.yml")
+    def test_autoglm_mobilesafetybench_run_config_loads(self) -> None:
+        spec = load_project_spec(ROOT / "configs" / "runs" / "autoglm_mobilesafetybench.yml")
 
-        self.assertEqual(spec.project.name, "mobile-agent-e-minimal")
+        self.assertEqual(spec.project.name, "open-autoglm-mobilesafetybench")
+        self.assertEqual(spec.models[0].provider, "openai_compatible")
+        self.assertEqual(spec.agents[0].agent_id, "open_autoglm")
+        self.assertEqual(spec.agents[0].integration_mode.value, "hybrid")
+        self.assertEqual(spec.agents[0].supported_backends, ("adb_appium", "adb", "hdc", "ios_wda"))
+        self.assertEqual(spec.benchmarks[0].benchmark_id, "mobilesafetybench")
+        self.assertEqual(spec.benchmarks[0].supported_agent_ids, ("open_autoglm",))
+
+    def test_mobile_agent_e_run_config_core_fields_load(self) -> None:
+        spec = load_project_spec(ROOT / "configs" / "runs" / "mobile_agent_e_mobilesafetybench.yml")
+
+        self.assertEqual(spec.project.name, "mobile-agent-e-mobilesafetybench")
         self.assertEqual(spec.models[0].provider, "openai_compatible")
         self.assertEqual(spec.agents[0].agent_id, "mobile_agent_e")
         self.assertEqual(spec.agents[0].integration_mode.value, "wrap")
@@ -257,21 +268,10 @@ monitoring:
         self.assertEqual(spec.benchmarks[0].benchmark_id, "mobilesafetybench")
         self.assertEqual(spec.benchmarks[0].supported_agent_ids, ("mobile_agent_e",))
 
-    def test_mobile_agent_v3_5_minimal_config_loads(self) -> None:
-        spec = load_project_spec(ROOT / "configs" / "integrations" / "mobile_agent_v3_5" / "minimal.yml")
+    def test_androidworld_benchmark_config_loads(self) -> None:
+        spec = load_project_spec(ROOT / "configs" / "runs" / "androidworld_benchmark.yml")
 
-        self.assertEqual(spec.project.name, "mobile-agent-v3-5-minimal")
-        self.assertEqual(spec.models[0].provider, "openai_compatible")
-        self.assertEqual(spec.agents[0].agent_id, "mobile_agent_v3_5")
-        self.assertEqual(spec.agents[0].integration_mode.value, "wrap")
-        self.assertEqual(spec.agents[0].supported_backends, ("adb_appium", "adb"))
-        self.assertEqual(spec.benchmarks[0].benchmark_id, "mobilesafetybench")
-        self.assertEqual(spec.benchmarks[0].supported_agent_ids, ("mobile_agent_v3_5",))
-
-    def test_androidworld_minimal_config_loads(self) -> None:
-        spec = load_project_spec(ROOT / "configs" / "integrations" / "androidworld" / "minimal.yml")
-
-        self.assertEqual(spec.project.name, "androidworld-minimal")
+        self.assertEqual(spec.project.name, "androidworld-benchmark")
         self.assertEqual(spec.agents[0].agent_id, "dummy_text_agent")
         self.assertEqual(spec.agents[0].supported_backends, ("adb",))
         self.assertEqual(spec.agents[0].supported_benchmarks, ("androidworld",))

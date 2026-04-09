@@ -36,7 +36,7 @@ from snowl_mobile.schemas.observation import ObservationBundle
 
 
 MOBILE_AGENT_V3_5_REPO = ROOT / "references" / "agents" / "MobileAgent" / "Mobile-Agent-v3.5"
-MOBILE_AGENT_V3_5_CONFIG = ROOT / "configs" / "integrations" / "mobile_agent_v3_5" / "minimal.yml"
+MOBILE_AGENT_V3_5_CONFIG = ROOT / "configs" / "runs" / "mobile_agent_v3_5_mobilesafetybench.yml"
 
 
 class MobileAgentV35AdapterTestCase(unittest.TestCase):

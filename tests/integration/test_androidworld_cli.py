@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
-CONFIG = ROOT / "configs" / "integrations" / "androidworld" / "minimal.yml"
+CONFIG = ROOT / "configs" / "runs" / "androidworld_benchmark.yml"
 
 
 class AndroidWorldCLITestCase(unittest.TestCase):
@@ -68,7 +68,7 @@ class AndroidWorldCLITestCase(unittest.TestCase):
             self.assertIn("Dry-run simulated 1 trial(s)", dry_run_completed.stdout)
             self.assertIn('"succeeded": 1', dry_run_completed.stdout)
 
-            run_dir = Path(temp_dir) / "plan-androidworld-minimal"
+            run_dir = Path(temp_dir) / "plan-androidworld-benchmark"
             self.assertTrue((run_dir / "manifest.json").exists())
             self.assertTrue((run_dir / "summary.json").exists())
             summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))

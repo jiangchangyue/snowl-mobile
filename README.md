@@ -30,7 +30,6 @@ This means the project is already usable for a first real closure, but it is not
 - dedicated `mobile_agent_e__mobilesafetybench` pair bridge with MobileSafetyBench environment bootstrap and pair-level raw artifacts
 - dedicated `mobile_agent_v3_5__mobilesafetybench` pair bridge with MobileSafetyBench environment bootstrap, bridge-level observations, and final-state evaluation
 - AndroidWorld benchmark registration with upstream-backed task discovery, benchmark-side runtime probe support, and checked-in configs:
-  - `configs/integrations/androidworld/minimal.yml`
   - `configs/runs/androidworld_benchmark.yml`
 - first AndroidWorld real-pair config:
   - `configs/runs/autoglm_androidworld.yml`
@@ -67,7 +66,7 @@ This means the project is already usable for a first real closure, but it is not
 - Pair runs can now keep multiple leased emulators busy in the same `run` invocation, but the in-process bridge architecture still shares one host Python environment and benchmark-side `benchmark-run` remains a simpler path.
 - AndroidWorld full runs now support the same output-dir resume flow as the rest of the platform: rerun the same command with the same `--output-dir` and previously completed/skipped trials are reused automatically, while failed/aborted trials are cleared and run again. This is artifact-level resume, not in-trial step checkpoint resume.
 - Automatic recovery for Appium, upstream runtime, and model endpoint failures is still limited.
-- If you previously exported `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1` in your shell, removing it from a config file does not unset the current shell variable; run `unset MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION` before testing the full perception path.
+- Mobile-Agent-E now defaults to the platform's lightweight perception mode for canonical runs. Set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0` only if you intentionally want the full ModelScope / GroundingDINO perception stack in the current shell.
 
 ## Requirements
 
@@ -168,7 +167,7 @@ If you want to use AndroidWorld through the platform today, also clone `referenc
 
 ### 5. Configure runtime inputs
 
-The CLI no longer auto-loads `.env` or `.env.local`.
+The CLI no longer auto-loads `.env` or `.env.local`, and the repository no longer keeps checked-in `.env.*` templates.
 
 The platform now auto-resolves these from the repository or local `PATH` when possible:
 
@@ -213,7 +212,7 @@ Notes:
   - `MOBILE_AGENT_E_STEP_SLEEP_SEC`
   - `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION`
 - for a first smoke run, the only Mobile-Agent-E-specific env var you normally need is `MOBILE_AGENT_E_HOME`; the existing `PHONE_AGENT_*` values can be reused automatically.
-- for the first real smoke run, set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`; in that mode the wrapper can bootstrap without `MOBILE_AGENT_E_CAPTION_API_KEY` and will use lightweight OCR/icon stubs instead of the full ModelScope perception stack.
+- Mobile-Agent-E now defaults to lightweight perception for platform runs; in that mode the wrapper can bootstrap without `MOBILE_AGENT_E_CAPTION_API_KEY` and will use lightweight OCR/icon stubs instead of the full ModelScope perception stack.
 - only set `MOBILE_AGENT_E_BASE_URL`, `MOBILE_AGENT_E_API_KEY`, or `MOBILE_AGENT_E_REASONING_MODEL` if you want Mobile-Agent-E to use a different endpoint or model from Open-AutoGLM.
 - if `adb devices` works in your shell but the wrapped run still cannot see the target serial, point `MOBILE_AGENT_E_ADB_PATH` at the full SDK binary path, for example `/Users/<you>/Library/Android/sdk/platform-tools/adb`.
 - Mobile-Agent-v3.5 now follows the same platform-side env mapping pattern:
@@ -233,7 +232,7 @@ Notes:
 See:
 
 - `configs/runs/autoglm_mobilesafetybench.yml`
-- `.env.example`
+- `configs/runs/mobile_agent_e_mobilesafetybench.yml`
 
 Mobile-Agent-v3.5 now also has:
 
@@ -481,7 +480,7 @@ Current known limits:
 
 - this bridge still keeps action execution inside Mobile-Agent-E's own ADB loop rather than rewriting actions into AndroidWorld-native `JSONAction`
 - a real full-suite run has not been fully verified in this workspace yet because no local interpreter currently imports both AndroidWorld and Mobile-Agent-E dependencies cleanly
-- the minimal AndroidWorld smoke path now honors `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`, so the first bridge no longer eagerly requires `torch` just to start the wrapped runner
+- the AndroidWorld smoke path now follows the same default lightweight-perception behavior as the MobileSafetyBench path, so the first bridge no longer eagerly requires `torch` just to start the wrapped runner unless you explicitly opt into full perception
 
 ## First Run: Mobile-Agent-v3.5 x AndroidWorld
 
@@ -693,7 +692,7 @@ What now happens before the first model call:
 Before running it for real, make sure:
 
 - `references/agents/MobileAgent/Mobile-Agent-E/` exists
-- the Mobile-Agent-E requirements are installed into the current Python environment, or `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1` is enabled for the first smoke run
+- the Mobile-Agent-E requirements are installed into the current Python environment, or you keep the platform's default lightweight-perception mode enabled
 - `PHONE_AGENT_BASE_URL`, `PHONE_AGENT_API_KEY`, and `PHONE_AGENT_MODEL` are exported in your shell, passed on the CLI via `--base-url`, `--api-key`, and `--model-name`, or encoded in the run config itself
 - `MOBILE_AGENT_E_CAPTION_API_KEY` is set if you disable lightweight perception and keep caption mode on `api`
 - an Android emulator is already running and visible in `adb devices`
@@ -720,7 +719,7 @@ Recommended first-run order:
 3. Run `snowl-mobile validate-config configs/runs/mobile_agent_e_mobilesafetybench.yml`.
 4. Run `snowl-mobile plan configs/runs/mobile_agent_e_mobilesafetybench.yml`.
    This should now show `bridge_id = mobile_agent_e__mobilesafetybench` and `pair_recipe_id = mobile_agent_e_mobilesafetybench_existing_device`.
-5. Export or encode the runtime settings directly: ensure `MOBILE_AGENT_E_HOME` is resolvable, set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`, and pass `--base-url`, `--api-key`, or `--model-name` only if you want a different endpoint from the checked-in config defaults.
+5. Export or encode the runtime settings directly: ensure `MOBILE_AGENT_E_HOME` is resolvable, and pass `--base-url`, `--api-key`, or `--model-name` only if you want a different endpoint from the checked-in config defaults. The platform now enables Mobile-Agent-E lightweight perception by default; only set `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0` if you intentionally want the full perception stack.
 6. Export `SNOWL_TASK_SELECTOR='task_category=text_message_sending,task_id=low_risk_001,limit=1'` for the first smoke run.
 7. Run the real one-task smoke command.
 8. Run `snowl-mobile summarize <run_dir>`.
@@ -766,7 +765,7 @@ Current limitations of this path:
 - the upstream repo still expects a heavy local dependency stack and may prefer Python 3.10 in practice
 - benchmark context is now forwarded into the wrapped task instruction and raw artifacts, but MobileSafetyBench evaluator progress is still not updated step-by-step the way the Open-AutoGLM pair bridge does it because Mobile-Agent-E still executes its own ADB loop outside `MobileSafetyEnv.step()`
 - start with a one-task `SNOWL_TASK_SELECTOR` smoke run before the full-manifest default; if the smoke run is not stable yet, the full run will mostly multiply that instability across the task set
-- `batch_size > 1` is still not recommended for this path
+- `batch_size > 1` is now supported for `run`; pass one `--adb-serial` per live emulator and let the orchestrator refill idle devices automatically, but remember that this pair still shares one host Python environment
 - current long-run behavior still depends on the host Python environment, local adb/Appium stability, and model endpoint uptime; the platform can resume and classify failures, but it does not hide these limits
 - on macOS, `/tmp/...` is backed by `/private/tmp/...`; if you pass `--output-dir /tmp/...`, check `/private/tmp/...` if Finder or terminal listing looks inconsistent
 - when `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION` is disabled, the first full-perception run may spend a long time downloading or loading ModelScope OCR / GroundingDINO assets before any step artifacts appear; watch `raw/mobile_agent_e/runner.stdout.txt` live
@@ -877,7 +876,7 @@ Current limitations of this path:
 - benchmark-aware app aliasing is bridge-owned but still intentionally minimal in this phase
 - the wrapped path still depends on the host Python environment and on upstream `mobile_use` dependencies
 - start with a one-task `SNOWL_TASK_SELECTOR` override before the full-manifest default; if the smoke run is not stable yet, the full run will mostly multiply that instability across the task set
-- `batch_size > 1` is still not recommended for this path
+- `batch_size > 1` is now supported for `run`; pass one `--adb-serial` per live emulator and let the orchestrator refill idle devices automatically, while keeping in mind that the wrapped path still shares one host Python environment
 - current long-run behavior still depends on host Python, adb/Appium stability, and model endpoint uptime; the platform can resume and classify failures, but it does not hide these limits
 - on some emulators, outer snapshot restore or adb health probes may stall before the pair bridge begins; if that happens, restart the emulator, confirm `adb devices`, and retry a one-task `SNOWL_TASK_SELECTOR` smoke run first
 

@@ -6,12 +6,12 @@
 #   SNOWL_TASK_SELECTOR='task_category=text_message_sending,task_id=high_risk_001,limit=1'
 
 project:
-  name: ${SNOWL_PROJECT_NAME:-open-autoglm-mobilesafetybench}
-  run_name: ${SNOWL_RUN_NAME:-open_autoglm__mobilesafetybench}
+  name: open-autoglm-mobilesafetybench
+  run_name: open_autoglm__mobilesafetybench
   description: Checked-in real-pair run for Open-AutoGLM x MobileSafetyBench with the default full-task selector and CLI-friendly runtime overrides.
 
 models:
-  - id: ${PHONE_AGENT_MODEL:-gpt-4o}
+  - id: gpt-4o
     provider: openai_compatible
     api_style: openai_chat
     modalities: [text, image]
@@ -23,7 +23,7 @@ agents:
   - id: open_autoglm
     display_name: Open-AutoGLM
     variant: default
-    model_ref: ${PHONE_AGENT_MODEL:-gpt-4o}
+    model_ref: gpt-4o
     integration_mode: hybrid
     required_modalities: [text, image]
     supported_modalities: [text, image]

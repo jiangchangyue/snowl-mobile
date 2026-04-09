@@ -7,15 +7,10 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
-.venv/
-venv/
 .venvs/
-.venvs/androidworld
-env/
+.venv/
 .env
-.env.local
 .env.*
-!.env.example
 build/
 dist/
 *.egg-info/

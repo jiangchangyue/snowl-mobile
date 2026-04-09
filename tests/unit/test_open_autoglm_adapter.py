@@ -29,7 +29,7 @@ from snowl_mobile.integration.agent_inspector import AgentRepositoryInspector
 
 
 OPEN_AUTOGLM_REPO = ROOT / "references" / "agents" / "Open-AutoGLM"
-OPEN_AUTOGLM_CONFIG = ROOT / "configs" / "integrations" / "autoglm" / "minimal.yml"
+OPEN_AUTOGLM_CONFIG = ROOT / "configs" / "runs" / "autoglm_mobilesafetybench.yml"
 
 
 class OpenAutoGLMAdapterTestCase(unittest.TestCase):

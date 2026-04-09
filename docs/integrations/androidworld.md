@@ -88,7 +88,7 @@ Reason:
 
 Config:
 
-- `configs/integrations/androidworld/minimal.yml`
+- `configs/runs/androidworld_benchmark.yml`
 - `configs/runs/androidworld_benchmark.yml`
 - `configs/runs/autoglm_androidworld.yml`
 - `configs/runs/mobile_agent_e_androidworld.yml`
@@ -131,7 +131,7 @@ It should print `33`.
 - The first `open_autoglm x androidworld` bridge is intentionally minimal: AndroidWorld owns bootstrap and scoring, while Open-AutoGLM still executes actions through its ADB device path.
 - The direct `open_autoglm x androidworld` run now performs task-scoped AndroidWorld app setup inside the pair bridge, so a fresh emulator can often be used without a separate `benchmark-setup` command first.
 - A dedicated AndroidWorld worker env is still recommended. The platform can point the bridge subprocess at `ANDROID_WORLD_PYTHON` or `benchmarks[*].options.python_executable`, but it does not create that env for you yet.
-- The checked-in real-pair config intentionally stays tiny: one device, `batch_size=1`, and a small Android task subset.
+- The checked-in real-pair configs now default to the full `android_world` suite; smoke runs reuse the same files through `SNOWL_ANDROIDWORLD_SUITE_FAMILY` and `SNOWL_ANDROIDWORLD_TASKS`, and concurrency is overridden at run time with `--batch-size`.
 - The checked-in full-suite config is now available, but a real full-suite verification is still pending on a machine that has one interpreter capable of importing both AndroidWorld and Open-AutoGLM dependencies.
 - AndroidWorld full runs now inherit the platform's standard same-directory resume behavior: rerunning the same command with the same `--output-dir` skips trials that already have terminal `meta.json + score.json` artifacts. This is trial-level artifact resume, not mid-trial step checkpoint resume.
 - The benchmark still recommends a dedicated Python environment for real execution; the platform now lets you point `python_executable` or `ANDROID_WORLD_PYTHON` at that env, but it does not create the environment for you yet.
@@ -175,7 +175,7 @@ Current checkout behavior:
 - default full-suite: `suite_family=android_world`
 - default full-suite: `tasks=[]`, which means "discover the whole family from the upstream registry"
 - `n_task_combinations=1`
-- `batch_size=1`
+- `batch_size` defaults to `1` in the checked-in files and is overridden at run time with `--batch-size`
 - `max_steps=30`
 - `timeout_sec=3600`
 - `max_trial_retries=1`

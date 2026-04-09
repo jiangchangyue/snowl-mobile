@@ -14,7 +14,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, TextIO
+from typing import TYPE_CHECKING, Any, Callable, Mapping, TextIO
 
 from snowl_mobile.adapters.agents.base import WrappedAgentAdapter
 from snowl_mobile.adapters.base import AdapterMetadata
@@ -69,6 +69,7 @@ _WRAPPER_LIGHTWEIGHT_PERCEPTION_ENV = "MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION"
 _WRAPPER_FAILURE_PATH = "failure.json"
 _RUNNER_MODULE = "snowl_mobile.adapters.agents.mobile_agent_e_runner"
 _TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
+_FALSY_ENV_VALUES = {"0", "false", "no", "off"}
 _PHONE_AGENT_BASE_URL_ENV = "PHONE_AGENT_BASE_URL"
 _PHONE_AGENT_API_KEY_ENV = "PHONE_AGENT_API_KEY"
 _PHONE_AGENT_MODEL_ENV = "PHONE_AGENT_MODEL"
@@ -152,6 +153,18 @@ def _utcnow() -> str:
 
 def _env_flag_enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY_ENV_VALUES
+
+
+def mobile_agent_e_lightweight_perception_enabled(
+    env: Mapping[str, str] | None = None,
+) -> bool:
+    env_mapping = os.environ if env is None else env
+    raw_value = str(env_mapping.get(_WRAPPER_LIGHTWEIGHT_PERCEPTION_ENV, "") or "").strip().lower()
+    if not raw_value:
+        return True
+    if raw_value in _FALSY_ENV_VALUES:
+        return False
+    return raw_value in _TRUTHY_ENV_VALUES
 
 
 def _normalize_upstream_api_url(*, backbone_type: str, base_url: str) -> str:
@@ -565,7 +578,7 @@ def build_mobile_agent_e_runtime_env(
     )
     caption_call_method = os.environ.get(_WRAPPER_CAPTION_CALL_METHOD_ENV, "api").strip() or "api"
     caption_api_key = os.environ.get(_WRAPPER_CAPTION_API_KEY_ENV) or reasoning_api_key
-    lightweight_perception = _env_flag_enabled(_WRAPPER_LIGHTWEIGHT_PERCEPTION_ENV)
+    lightweight_perception = mobile_agent_e_lightweight_perception_enabled()
     base_url = (
         os.environ.get(_WRAPPER_REASONING_BASE_URL_ENV)
         or os.environ.get(_PHONE_AGENT_BASE_URL_ENV, "")

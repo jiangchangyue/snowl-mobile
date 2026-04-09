@@ -7,12 +7,12 @@
 #   SNOWL_ANDROIDWORLD_TASKS=SimpleSmsSend
 
 project:
-  name: ${SNOWL_PROJECT_NAME:-mobile-agent-v3-5-androidworld}
-  run_name: ${SNOWL_RUN_NAME:-mobile_agent_v3_5__androidworld}
+  name: mobile-agent-v3-5-androidworld
+  run_name: mobile_agent_v3_5__androidworld
   description: Canonical checked-in run config for Mobile-Agent-v3.5 x AndroidWorld with a full-suite default and env-driven smoke overrides.
 
 models:
-  - id: ${PHONE_AGENT_MODEL:-gpt-4o}
+  - id: gpt-4o
     provider: openai_compatible
     api_style: openai_chat
     modalities: [text, image]
@@ -24,7 +24,7 @@ agents:
   - id: mobile_agent_v3_5
     display_name: Mobile-Agent-v3.5
     variant: default
-    model_ref: ${PHONE_AGENT_MODEL:-gpt-4o}
+    model_ref: gpt-4o
     integration_mode: wrap
     required_modalities: [text, image]
     supported_modalities: [text, image]
@@ -116,10 +116,10 @@ runtime:
 
 devices:
   device_mode: existing_device
-  adb_serials: [${SNOWL_ANDROIDWORLD_ADB_SERIAL:-emulator-5554}]
+  adb_serials: [emulator-5554]
   emulator_profiles:
     - id: androidworld_api33
-      base_avd_name: ${SNOWL_ANDROIDWORLD_AVD_NAME:-AndroidWorldAvd}
+      base_avd_name: AndroidWorldAvd
       platform: android
       api_level: 33
       system_image: android-33/google_apis/x86_64

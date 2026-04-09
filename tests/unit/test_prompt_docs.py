@@ -33,7 +33,6 @@ class PromptDocsContractTestCase(unittest.TestCase):
         self.troubleshooting = (ROOT / "docs" / "troubleshooting.md").read_text(
             encoding="utf-8"
         )
-        self.env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
 
     def test_benchmark_prompt_matches_current_platform_commands(self) -> None:
         required_strings = (
@@ -126,7 +125,6 @@ class PromptDocsContractTestCase(unittest.TestCase):
             "## 手工接入与 Codex 辅助接入",
             "registry list-agents",
             "registry list-benchmarks",
-            ".env.example",
         ):
             self.assertIn(required, self.readme_zh)
 
@@ -146,6 +144,8 @@ class PromptDocsContractTestCase(unittest.TestCase):
             "snowl-mobile registry list-benchmarks",
             "snowl-mobile devices list",
             "snowl-mobile run configs/runs/autoglm_mobilesafetybench.yml",
+            "--batch-size 2",
+            "--model-name",
         ):
             self.assertIn(required, self.quickstart)
 
@@ -157,14 +157,8 @@ class PromptDocsContractTestCase(unittest.TestCase):
         ):
             self.assertIn(required, self.troubleshooting)
 
-        for required in (
-            "OPEN_AUTOGLM_HOME",
-            "MOBILE_SAFETY_HOME",
-            "PHONE_AGENT_BASE_URL",
-            "PHONE_AGENT_API_KEY",
-            "APPIUM_BIN",
-        ):
-            self.assertIn(required, self.env_example)
+        self.assertNotIn(".env.example", self.readme)
+        self.assertNotIn(".env.example", self.readme_zh)
 
     def test_cli_source_exposes_registry_commands(self) -> None:
         for command_name in (

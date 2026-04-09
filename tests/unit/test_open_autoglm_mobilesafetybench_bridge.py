@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import tempfile
+import threading
 from types import ModuleType
 import unittest
 from pathlib import Path
@@ -1249,6 +1250,126 @@ class OpenAutoGLMMobileSafetyBenchBridgeTestCase(unittest.TestCase):
             [{"address": "15557654321", "body": "hello there", "type": "send"}],
         )
         trial_logger.warning.assert_called()
+
+    def test_prepare_shared_runtime_environment_overrides_stale_mobilesafety_paths(self) -> None:
+        bridge = OpenAutoGLMMobileSafetyBenchBridgeAdapter()
+        stale_root = Path("/tmp/stale-mobilesafety-root")
+        fresh_root = ROOT / "references" / "benchmarks" / "mobilesafetybench"
+
+        fake_environment_module = ModuleType("mobile_safety.environment")
+        fake_environment_module._WORK_PATH = str(stale_root)
+        fake_utils_module = ModuleType("mobile_safety.utils.utils")
+        fake_utils_module._WORK_PATH = str(stale_root)
+        fake_utils_module._SCRIPT_PATH = str(stale_root / "asset" / "environments" / "script")
+        fake_asset_module = ModuleType("asset.environments.set_up")
+        fake_asset_module._WORK_PATH = str(stale_root)
+        fake_asset_module._CONFIG_PATH = str(stale_root / "asset" / "environments" / "config")
+        fake_asset_module._RESOURCE_PATH = str(stale_root / "asset" / "environments" / "resource")
+
+        previous_home = os.environ.get("MOBILE_SAFETY_HOME")
+        previous_path = list(sys.path)
+        try:
+            with mock.patch.dict(
+                sys.modules,
+                {
+                    "mobile_safety.environment": fake_environment_module,
+                    "mobile_safety.utils.utils": fake_utils_module,
+                    "asset.environments.set_up": fake_asset_module,
+                },
+                clear=False,
+            ):
+                bridge._prepare_shared_runtime_environment(
+                    repo_paths=[fresh_root],
+                    env_vars={"MOBILE_SAFETY_HOME": str(fresh_root)},
+                )
+
+            self.assertEqual(os.environ["MOBILE_SAFETY_HOME"], str(fresh_root))
+            self.assertEqual(fake_environment_module._WORK_PATH, str(fresh_root))
+            self.assertEqual(fake_utils_module._WORK_PATH, str(fresh_root))
+            self.assertEqual(
+                fake_utils_module._SCRIPT_PATH,
+                str(fresh_root / "asset" / "environments" / "script"),
+            )
+            self.assertEqual(fake_asset_module._WORK_PATH, str(fresh_root))
+            self.assertEqual(
+                fake_asset_module._CONFIG_PATH,
+                str(fresh_root / "asset" / "environments" / "config"),
+            )
+            self.assertEqual(
+                fake_asset_module._RESOURCE_PATH,
+                str(fresh_root / "asset" / "environments" / "resource"),
+            )
+            self.assertIn(str(fresh_root), sys.path)
+        finally:
+            sys.path[:] = previous_path
+            if previous_home is None:
+                os.environ.pop("MOBILE_SAFETY_HOME", None)
+            else:
+                os.environ["MOBILE_SAFETY_HOME"] = previous_home
+
+    def test_console_capture_is_thread_scoped_under_parallel_runs(self) -> None:
+        bridge = OpenAutoGLMMobileSafetyBenchBridgeAdapter()
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        original_stdout_router = bridge_module._STDOUT_ROUTER
+        original_stderr_router = bridge_module._STDERR_ROUTER
+        bridge_module._STDOUT_ROUTER = None
+        bridge_module._STDERR_ROUTER = None
+
+        barrier = threading.Barrier(3)
+        results: dict[str, tuple[str, str, str]] = {}
+        errors: list[BaseException] = []
+
+        def worker(label: str) -> None:
+            try:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    console_path = Path(temp_dir) / f"{label}.console.txt"
+
+                    def operation() -> str:
+                        barrier.wait(timeout=2)
+                        print(f"{label}-stdout")
+                        print(f"{label}-stderr", file=sys.stderr)
+                        return label
+
+                    result, captured_output = bridge._run_with_console_capture(
+                        operation,
+                        file_paths=[console_path],
+                    )
+                    results[label] = (
+                        result,
+                        captured_output,
+                        console_path.read_text(encoding="utf-8"),
+                    )
+            except BaseException as error:  # pragma: no cover - defensive test harness
+                errors.append(error)
+
+        try:
+            threads = [
+                threading.Thread(target=worker, args=("alpha",)),
+                threading.Thread(target=worker, args=("beta",)),
+            ]
+            for thread in threads:
+                thread.start()
+            barrier.wait(timeout=2)
+            for thread in threads:
+                thread.join(timeout=5)
+
+            self.assertFalse(errors, msg=[repr(error) for error in errors])
+            self.assertEqual(results["alpha"][0], "alpha")
+            self.assertEqual(results["beta"][0], "beta")
+            self.assertIn("alpha-stdout", results["alpha"][1])
+            self.assertIn("alpha-stderr", results["alpha"][1])
+            self.assertNotIn("beta-stdout", results["alpha"][1])
+            self.assertNotIn("beta-stderr", results["alpha"][1])
+            self.assertIn("beta-stdout", results["beta"][1])
+            self.assertIn("beta-stderr", results["beta"][1])
+            self.assertNotIn("alpha-stdout", results["beta"][1])
+            self.assertNotIn("alpha-stderr", results["beta"][1])
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            bridge_module._STDOUT_ROUTER = original_stdout_router
+            bridge_module._STDERR_ROUTER = original_stderr_router
 
 
 if __name__ == "__main__":

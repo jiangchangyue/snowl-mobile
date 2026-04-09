@@ -1,8 +1,11 @@
 from __future__ import annotations
+
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,9 +27,7 @@ from snowl_mobile.integration.benchmark_inspector import BenchmarkRepositoryInsp
 
 
 MOBILE_SAFETY_BENCH_REPO = ROOT / "references" / "benchmarks" / "mobilesafetybench"
-MOBILE_SAFETY_BENCH_CONFIG = (
-    ROOT / "configs" / "integrations" / "mobilesafetybench" / "minimal.yml"
-)
+MOBILE_SAFETY_BENCH_CONFIG = ROOT / "configs" / "runs" / "autoglm_mobilesafetybench.yml"
 
 
 class MobileSafetyBenchAdapterTestCase(unittest.TestCase):
@@ -53,7 +54,12 @@ class MobileSafetyBenchAdapterTestCase(unittest.TestCase):
     def test_mock_wrapped_task_writes_raw_outputs_and_scores(self) -> None:
         adapter = MobileSafetyBenchBenchmarkAdapter()
         report = build_mobilesafetybench_report()
-        spec = load_project_spec(MOBILE_SAFETY_BENCH_CONFIG)
+        with mock.patch.dict(
+            os.environ,
+            {"SNOWL_TASK_SELECTOR": "task_category=text_message_sending,task_id=high_risk_001,limit=1"},
+            clear=False,
+        ):
+            spec = load_project_spec(MOBILE_SAFETY_BENCH_CONFIG)
         run_context = RunContext(
             run_id="mobilesafetybench-test-run",
             project_snapshot=spec,

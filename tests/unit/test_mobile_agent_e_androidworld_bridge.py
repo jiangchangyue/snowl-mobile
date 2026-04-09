@@ -39,6 +39,9 @@ class MobileAgentEAndroidWorldBridgeTestCase(unittest.TestCase):
         return env
 
     def test_runtime_detects_lightweight_perception_flag(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(runtime_module._mobile_agent_e_lightweight_perception_enabled())
+
         with mock.patch.dict(os.environ, {"MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION": "1"}, clear=False):
             self.assertTrue(runtime_module._mobile_agent_e_lightweight_perception_enabled())
 

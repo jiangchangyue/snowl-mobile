@@ -9,7 +9,7 @@ Current status: `mobile_agent_v3_5` is registered as a real agent adapter, has a
 - current integration mode: `wrap`
 - pair bridge id: `mobile_agent_v3_5__mobilesafetybench`
 - current upstream focus: `Mobile-Agent-v3.5/mobile_use/`
-- minimal config: [configs/integrations/mobile_agent_v3_5/minimal.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/integrations/mobile_agent_v3_5/minimal.yml)
+- canonical checked-in run config: [configs/runs/mobile_agent_v3_5_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/mobile_agent_v3_5_mobilesafetybench.yml)
 - full run config: [configs/runs/mobile_agent_v3_5_mobilesafetybench.yml](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/configs/runs/mobile_agent_v3_5_mobilesafetybench.yml)
 
 ## Why `mobile_use/`
@@ -63,9 +63,9 @@ Fallbacks for the first smoke setup:
 
 ```bash
 PYTHONPATH=src python3 -m snowl_mobile registry list-agents --metadata
-PYTHONPATH=src python3 -m snowl_mobile validate-config configs/integrations/mobile_agent_v3_5/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile plan configs/integrations/mobile_agent_v3_5/minimal.yml
-PYTHONPATH=src python3 -m snowl_mobile dry-run configs/integrations/mobile_agent_v3_5/minimal.yml --output-dir /tmp/snowl-mobile-mobile-agent-v3-5
+PYTHONPATH=src python3 -m snowl_mobile validate-config configs/runs/mobile_agent_v3_5_mobilesafetybench.yml
+PYTHONPATH=src python3 -m snowl_mobile plan configs/runs/mobile_agent_v3_5_mobilesafetybench.yml
+PYTHONPATH=src python3 -m snowl_mobile dry-run configs/runs/mobile_agent_v3_5_mobilesafetybench.yml --output-dir /tmp/snowl-mobile-mobile-agent-v3-5
 ```
 
 ## Real smoke commands
@@ -125,4 +125,4 @@ Look under:
 - the real path still depends on the host Python environment and on upstream `mobile_use` dependencies
 - the canonical full config defaults to `all`, which is `250` tasks in the current MobileSafetyBench checkout
 - start with a one-task `SNOWL_TASK_SELECTOR` override before the full-manifest default; if the smoke path is unstable, the full run will mostly amplify that instability
-- keep `batch_size=1`, `artifact level = standard`, and `device_mode = existing_device` for now
+- keep `artifact level = standard` and `device_mode = existing_device`; scale concurrency at run time with `--batch-size` plus one `--adb-serial` per live emulator

@@ -117,7 +117,7 @@ The repository now includes a real benchmark integration example for `MobileSafe
 See:
 
 - `references/benchmarks/mobilesafetybench/`
-- `configs/integrations/mobilesafetybench/minimal.yml`
+- `configs/runs/autoglm_mobilesafetybench.yml`
 - `docs/integrations/mobilesafetybench.md`
 
 The key point is that the workflow did not change:
@@ -125,7 +125,7 @@ The key point is that the workflow did not change:
 1. the user manually placed the upstream repo under `references/benchmarks/`
 2. the platform repo inspector and checklist were used first
 3. the adapter was landed with the same benchmark contract and registry flow
-4. minimal validation still runs through `validate-config / plan / dry-run`
+4. canonical checked-in config validation still runs through `validate-config / plan / dry-run`
 
 So future real benchmark integrations should still reuse the same inspector, contract, scaffold, checklist, and docs path instead of falling back to one-off scripts.
 
@@ -136,7 +136,7 @@ The repository now also includes a planning-phase benchmark adapter for `Android
 See:
 
 - `references/benchmarks/android_world/`
-- `configs/integrations/androidworld/minimal.yml`
+- `configs/runs/androidworld_benchmark.yml`
 - `docs/integrations/androidworld.md`
 
 Current status:

@@ -34,7 +34,6 @@ snowl-mobile 是一个面向 `Mobile Agent x Benchmark x Model x Emulator` 统�
 - `mobile_agent_e__mobilesafetybench` pair bridge，负责在 Mobile-Agent-E subprocess 启动前完成 MobileSafetyBench reset / seed / bootstrap
 - `mobile_agent_v3_5__mobilesafetybench` pair bridge，负责在 Mobile-Agent-v3.5 subprocess 前后完成 MobileSafetyBench reset / bootstrap observation / final-state evaluation
 - AndroidWorld benchmark 已经完成 registry 注册、真实仓库 task discovery 接入、benchmark-side runtime probe，以及 checked-in configs：
-  - `configs/integrations/androidworld/minimal.yml`
   - `configs/runs/androidworld_benchmark.yml`
 - AndroidWorld 第一条真实 pair config：
   - `configs/runs/autoglm_androidworld.yml`
@@ -62,7 +61,7 @@ snowl-mobile 是一个面向 `Mobile Agent x Benchmark x Model x Emulator` 统�
 - 当前优先支持 `existing_device`；`managed_avd` 还不是完整方案。
 - AndroidWorld full run 现在已经支持和平台其它 real run 一样的同目录 resume：复用同一个 `--output-dir` 重新执行相同命令后，已经完成/跳过的 trial 会被自动复用，之前失败/中止的 trial 会被清理后重新执行。这里是基于 artifact 的 trial 级 resume，不是单个 trial 内部 step 级别的断点续跑。
 - Appium、上游 runtime、模型 endpoint 出错时现在能 fail-fast，但自动恢复能力还比较有限。
-- 如果你之前在 shell 里执行过 `export MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`，仅仅删除某个配置文件里的这一行，并不会清掉当前终端里的环境变量；测试完整感知链前请先执行 `unset MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION`。
+- Mobile-Agent-E 现在在平台 canonical run 中默认启用轻量感知。只有当你明确想测试完整的 ModelScope / GroundingDINO 感知链时，才需要在当前 shell 里显式设置 `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0`。
 
 ## 前置准备
 
@@ -163,7 +162,7 @@ python -m pip install openai pillow numpy
 
 ### 5. 填写环境变量
 
-不再需要依赖 `.env.local`。CLI 现在不会自动加载 `.env` / `.env.local`。
+不再需要依赖 `.env.local`，仓库里也不再保留 checked-in `.env.*` 模板。CLI 现在不会自动加载 `.env` / `.env.local`。
 
 平台现在会尽量自动解析这些路径：
 
@@ -205,7 +204,7 @@ python -m pip install openai pillow numpy
   - `MOBILE_AGENT_E_STEP_SLEEP_SEC`
   - `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION`
 - 对第一次 smoke 来说，你通常只需要补 `MOBILE_AGENT_E_HOME`；现有 `PHONE_AGENT_*` 可以直接被 Mobile-Agent-E 复用
-- 第一次真实 smoke 建议设置 `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`；在这个模式下可以先不填 `MOBILE_AGENT_E_CAPTION_API_KEY`，wrapper 也会改走轻量 OCR / icon stub，而不是完整的 ModelScope 感知链
+- Mobile-Agent-E 现在在平台运行里默认启用轻量感知；在这个模式下可以先不填 `MOBILE_AGENT_E_CAPTION_API_KEY`，wrapper 也会改走轻量 OCR / icon stub，而不是完整的 ModelScope 感知链
 - 只有当你想让 Mobile-Agent-E 使用不同于 Open-AutoGLM 的 endpoint / model 时，才需要再单独填写 `MOBILE_AGENT_E_BASE_URL`、`MOBILE_AGENT_E_API_KEY`、`MOBILE_AGENT_E_REASONING_MODEL`
 - 如果你在 shell 里执行 `adb devices` 正常，但 wrapped run 里仍然找不到设备，优先把 `MOBILE_AGENT_E_ADB_PATH` 指向 SDK 的完整 `adb` 路径，例如 `/Users/<you>/Library/Android/sdk/platform-tools/adb`
 - Mobile-Agent-v3.5 现在也已经接入同样的平台侧 env 映射：
@@ -224,8 +223,8 @@ python -m pip install openai pillow numpy
 
 相关文件：
 
-- `.env.example`
 - `configs/runs/autoglm_mobilesafetybench.yml`
+- `configs/runs/mobile_agent_e_mobilesafetybench.yml`
 - `configs/runs/mobile_agent_v3_5_mobilesafetybench.yml`
 
 ### 6. 手动启动 Android 模拟器
@@ -503,7 +502,7 @@ snowl-mobile summarize /tmp/snowl-mobile-mobile-agent-e-androidworld-full
 
 - 这条 bridge 仍然保留 Mobile-Agent-E 自己的 ADB action loop，而不是把动作重写成 AndroidWorld-native `JSONAction`
 - 在当前工作区里，真实 full-suite 还没有完全验证通过，因为本机还没有一个能同时 import AndroidWorld 和 Mobile-Agent-E 依赖的 Python 解释器
-- 最小 AndroidWorld smoke 路径现在也会正确尊重 `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`，因此第一条 bridge 不再为了启动 wrapped runner 就提前强制要求 `torch`
+- AndroidWorld smoke 路径现在也和 MobileSafetyBench 一样默认走轻量感知，所以只要你没有显式切到完整感知链，第一条 bridge 就不再为了启动 wrapped runner 提前强制要求 `torch`
 
 ## Mobile-Agent-v3.5 × AndroidWorld 第一次运行
 
@@ -663,7 +662,7 @@ snowl-mobile summarize ./tmp/snowl-mobile-real-pair
 真实运行前请先确认：
 
 - `references/agents/MobileAgent/Mobile-Agent-E/` 已存在
-- Mobile-Agent-E 的 requirements 已安装到当前 Python 环境，或者第一次 smoke 已启用 `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`
+- Mobile-Agent-E 的 requirements 已安装到当前 Python 环境，或者保持平台默认的轻量感知模式
 - `PHONE_AGENT_BASE_URL`、`PHONE_AGENT_API_KEY`、`PHONE_AGENT_MODEL` 已经通过 shell export、CLI 的 `--base-url / --api-key / --model-name`，或者直接写入 run config 提供
 - 如果关闭 lightweight perception 且仍使用 caption `api` 模式，`MOBILE_AGENT_E_CAPTION_API_KEY` 也已设置
 - Android 模拟器已启动，并且 `adb devices` 能看到目标 serial
@@ -690,7 +689,7 @@ snowl-mobile summarize ./tmp/snowl-mobile-real-pair
 3. 运行 `snowl-mobile validate-config configs/runs/mobile_agent_e_mobilesafetybench.yml`
 4. 运行 `snowl-mobile plan configs/runs/mobile_agent_e_mobilesafetybench.yml`
    这里现在应该能看到 `bridge_id = mobile_agent_e__mobilesafetybench` 和 `pair_recipe_id = mobile_agent_e_mobilesafetybench_existing_device`
-5. 直接通过 shell / CLI / run config 提供运行参数：确保 `MOBILE_AGENT_E_HOME` 可解析，设置 `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=1`；只有当你希望 Mobile-Agent-E 不复用当前默认端点时，才需要额外传 `--base-url / --api-key / --model-name`
+5. 直接通过 shell / CLI / run config 提供运行参数：确保 `MOBILE_AGENT_E_HOME` 可解析。平台现在默认启用 Mobile-Agent-E 轻量感知；只有当你明确想测试完整感知链时，才需要额外设置 `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION=0`。如果你只是想让 Mobile-Agent-E 不复用当前默认端点，再额外传 `--base-url / --api-key / --model-name`
 6. 导出 `SNOWL_TASK_SELECTOR='task_category=text_message_sending,task_id=low_risk_001,limit=1'` 作为第一次 smoke run
 7. 执行真实 1-task smoke run
 8. 运行 `snowl-mobile summarize <run_dir>`
@@ -736,7 +735,7 @@ snowl-mobile summarize ./tmp/snowl-mobile-mobile-agent-e-full
 - 上游依赖栈很重，而且上游 README 仍然更偏向 Python 3.10
 - benchmark task context 现在已经会被带进 wrapped task instruction 和 raw artifacts，但 MobileSafetyBench evaluator progress 还没有像 Open-AutoGLM pair bridge 那样逐步原生更新，因为 Mobile-Agent-E 仍然通过它自己的 ADB loop 在 `MobileSafetyEnv.step()` 之外执行动作
 - 请先跑 1-task 的 `SNOWL_TASK_SELECTOR` smoke，再跑 full manifest；如果 smoke 还不稳定，full run 只会把这种不稳定按任务数放大
-- 当前仍不建议 `batch_size > 1`
+- `run` 现在已经支持 `batch_size > 1`；请为每台正在运行的模拟器都传一个 `--adb-serial`，调度器会自动把空闲设备补满，但这条 pair path 仍然共享同一个 host Python 环境
 - 长跑的稳定性仍然直接依赖 host Python 环境、adb / Appium 稳定性以及模型 endpoint 的可用性；平台现在能 resume 和分类失败，但还不能替你掩盖这些限制
 <!-- - 在 macOS 上，`/tmp/...` 实际映射到 `/private/tmp/...`；如果你传了 `--output-dir /tmp/...`，但一时在终端或 Finder 里没看到，优先去 `/private/tmp/...` 下确认 -->
 - 当关闭 `MOBILE_AGENT_E_LIGHTWEIGHT_PERCEPTION` 时，第一次完整感知运行可能会先花很久下载或加载 ModelScope OCR / GroundingDINO 资产；这时 step artifact 还没出现是正常的，请直接实时查看 `raw/mobile_agent_e/runner.stdout.txt`
@@ -846,7 +845,7 @@ unset SNOWL_TASK_SELECTOR
 - benchmark-aware app alias 现在已经进了 bridge，但仍然只是最小覆盖
 - 这条 wrapped path 仍然依赖 host Python 环境和 `mobile_use` 的上游依赖
 - 请先跑一任务 `SNOWL_TASK_SELECTOR` 再跑 full manifest；如果 smoke 还不稳定，full run 只会把这种不稳定按任务数放大
-- 当前仍不建议 `batch_size > 1`
+- `run` 现在已经支持 `batch_size > 1`；请为每台正在运行的模拟器都传一个 `--adb-serial`，调度器会自动把空闲设备补满，但 wrapped path 仍然共享同一个 host Python 环境
 - 长跑稳定性仍然直接依赖 host Python、adb / Appium 稳定性以及模型 endpoint 可用性；平台可以 resume 和分类失败，但不会替你掩盖这些外部限制
 - 某些模拟器上，外层 snapshot restore 或 adb health probe 可能在 pair bridge 开始前就卡住；如果出现这种情况，先重启模拟器、确认 `adb devices`，再回到一任务 `SNOWL_TASK_SELECTOR` smoke 重试
 
