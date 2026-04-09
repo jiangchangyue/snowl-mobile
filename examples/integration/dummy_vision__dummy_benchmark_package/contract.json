@@ -1,0 +1,20 @@
+{
+  "action_mapping_entry": "TODO_action_mapping_entry",
+  "agent_id": "dummy_vision_agent",
+  "artifact_capture_hooks": [
+    "TODO_artifact_capture_hook"
+  ],
+  "benchmark_id": "dummy_benchmark",
+  "bridge_id": "dummy_vision__dummy_benchmark",
+  "environment_handshake_entry": "TODO_environment_handshake_entry",
+  "integration_mode": "hybrid",
+  "observation_mapping_entry": "TODO_observation_mapping_entry",
+  "required_env": [
+    "TODO_ENV_VAR"
+  ],
+  "requires_pair_recipe": true,
+  "run_entry": "TODO_run_entry",
+  "supported_backends": [
+    "TODO_backend"
+  ]
+}

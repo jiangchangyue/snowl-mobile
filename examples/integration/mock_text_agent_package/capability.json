@@ -1,0 +1,14 @@
+{
+  "input_modalities": ["text"],
+  "action_output_schema": "json_action",
+  "supported_model_protocols": ["openai_chat"],
+  "tool_backends": ["adb", "appium"],
+  "runtime_requirements": ["requests", "pillow"],
+  "human_confirmation_mode": "mock_agent/confirmation_gate.py",
+  "raw_output_capture_points": ["mock_agent/raw_capture.py"],
+  "supports_image_input": false,
+  "supports_tool_calling": false,
+  "supports_json_mode": true,
+  "requires_tool_calling": false,
+  "requires_json_mode": false
+}

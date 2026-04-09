@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venvs/androidworld/bin/python -c \"import torch; import modelscope; import dashscope; print\\('All key packages OK'\\)\")"
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+# ${display_name} Agent Integration Scaffold
+
+This scaffold package was generated from the local agent repository at `${repo_path}`.
+
+## Suggested integration mode
+
+- `${integration_mode_lower}`
+
+## Capability declaration summary
+
+- capability profile: `${capability_profile}`
+- input modalities: `${input_modalities_text}`
+- action output schema: `${action_output_schema}`
+- supported model protocols: `${supported_model_protocols_text}`
+- tool backends: `${tool_backends}`
+- human confirmation mode: `${human_confirmation_mode}`
+- raw output capture points: `${raw_output_capture_points}`
+
+## Recommended responsibility boundaries
+
+- observation transform: `${observation_transform_entry}`
+- step entry: `${step_entry}`
+- run entry: `${run_entry}`
+- action normalization: `${action_normalization_entry}`
+- model call entry: `${model_call_entry}`
+- device control entry: `${device_control_entry}`
+
+## Model compatibility guidance
+
+- declare required modalities explicitly
+- keep `supported_model_protocols` aligned with the upstream model client
+- use `requires_tool_calling` and `requires_json_mode` only when the agent truly depends on them
+- preserve raw model output capture separately from normalized action records
+
+TODO:
+
+- verify the real observation transform path
+- verify the actual model-call entry and supported API style
+- verify the action normalization schema
+- verify whether the agent requires human confirmation
+- register the adapter
+- replace dummy benchmark bindings in `config.example.yml`
+- wire a real smoke integration test

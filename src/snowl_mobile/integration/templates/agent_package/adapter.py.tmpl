@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+from snowl_mobile.adapters.agents.base import AgentRuntime, BaseAgentAdapter
+from snowl_mobile.core.agent_spec import AgentSpec
+from snowl_mobile.core.enums import IntegrationMode, WorkerMode
+from snowl_mobile.core.errors import PhaseStubError
+from snowl_mobile.core.trial_context import TrialContext
+from snowl_mobile.schemas.observation import ObservationBundle
+
+
+class _${class_name}Runtime(AgentRuntime):
+    """TODO: fill this runtime after inspecting the real agent repo.
+
+    Repo: `${repo_name}`
+    Local path: `${repo_path}`
+    Suggested integration mode: `${integration_mode_lower}`
+    Capability profile: `${capability_profile}`
+    Inspector summary: ${summary_excerpt}
+    """
+
+    def create_session(self) -> None:
+        # TODO: initialize the upstream runtime and model client via `${model_call_entry}`.
+        raise PhaseStubError("Scaffold only: initialize the upstream runtime here.")
+
+    def step(self, observation: ObservationBundle) -> object:
+        # TODO: map ObservationBundle via `${observation_transform_entry}`.
+        # TODO: run the upstream step entry `${step_entry}` or wrap runner `${run_entry}`.
+        # TODO: normalize the raw output through `${action_normalization_entry}`.
+        raise PhaseStubError("Scaffold only: implement the agent step entry here.")
+
+    def close_session(self) -> None:
+        # TODO: close upstream sessions, model clients, and device-control handles.
+        raise PhaseStubError("Scaffold only: close the upstream runtime here.")
+
+
+class ${class_name}(BaseAgentAdapter):
+    @property
+    def adapter_id(self) -> str:
+        return "${adapter_id}"
+
+    def describe(self) -> AgentSpec:
+        return AgentSpec(
+            agent_id=self.adapter_id,
+            display_name="${display_name}",
+            variant="default",
+            model_ref="${model_ref}",
+            integration_mode=IntegrationMode.${integration_mode},
+            required_modalities=${input_modalities},
+            supported_modalities=${input_modalities},
+            supported_model_protocols=${supported_model_protocols},
+            supports_tool_calling=${supports_tool_calling},
+            supports_image_input=${supports_image_input},
+            supports_json_mode=${supports_json_mode},
+            requires_tool_calling=${requires_tool_calling},
+            requires_json_mode=${requires_json_mode},
+            required_env=${required_env},
+            action_schema="${action_output_schema}",
+            prompt_contract_version="TODO_prompt_contract",
+            worker_mode=WorkerMode.${worker_mode},
+            supported_benchmarks=("TODO_benchmark_id",),
+        )
+
+    def build_runtime(self, ctx: TrialContext) -> AgentRuntime:
+        # TODO: keep device control through `${device_control_entry}` isolated from core orchestration.
+        return _${class_name}Runtime()

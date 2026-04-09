@@ -1,0 +1,63 @@
+project:
+  name: ${adapter_id}-integration-demo
+  run_name: ${adapter_id}-smoke
+  description: >
+    TODO: fill this config after wiring the real agent adapter and a compatible local benchmark.
+
+models:
+  - model_id: ${model_ref}
+    provider: openai
+    api_style: openai_chat
+    modalities: ${input_modalities_json}
+    supports_image_input: ${supports_image_input_json}
+    supports_tool_calling: ${supports_tool_calling_json}
+    supports_json_mode: ${supports_json_mode_json}
+
+agents:
+  - agent_id: ${adapter_id}
+    model_ref: ${model_ref}
+    integration_mode: ${integration_mode_lower}
+    supported_modalities: ${input_modalities_json}
+    required_modalities: ${input_modalities_json}
+    supported_model_protocols: ${supported_model_protocols_json}
+    required_env: ${required_env_json}
+    action_schema: ${action_output_schema}
+    worker_mode: ${worker_mode_lower}
+
+benchmarks:
+  - benchmark_id: dummy_benchmark
+    display_name: Dummy Benchmark
+    integration_mode: wrap
+    task_source:
+      kind: inline
+      path: ""
+      selector: ""
+      manifest: ""
+    metric_schema:
+      primary_metric: task_success
+      native_metrics: [task_success]
+    scorer_ref: dummy.native
+    reset_policy: snapshot_then_seed
+    reset_requirements:
+      requires_task_seed: false
+    device_backend: adb_appium
+    required_env: []
+
+matrix:
+  expand: agent_x_benchmark
+  seeds: [seed-0001]
+
+runtime:
+  batch_size: 1
+  timeout_sec: 900
+  max_steps: 30
+  env_isolation: per_worker_venv
+
+devices:
+  default_profile: api34_base
+
+retries:
+  max_trial_retries: 1
+
+artifacts:
+  level: standard

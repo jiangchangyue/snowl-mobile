@@ -1,0 +1,63 @@
+project:
+  name: mock_vision_agent-integration-demo
+  run_name: mock_vision_agent-smoke
+  description: >
+    TODO: fill this config after wiring the real agent adapter and a compatible local benchmark.
+
+models:
+  - model_id: dummy_vision_model
+    provider: openai
+    api_style: openai_chat
+    modalities: ["text", "image"]
+    supports_image_input: true
+    supports_tool_calling: false
+    supports_json_mode: true
+
+agents:
+  - agent_id: mock_vision_agent
+    model_ref: dummy_vision_model
+    integration_mode: hybrid
+    supported_modalities: ["text", "image"]
+    required_modalities: ["text", "image"]
+    supported_model_protocols: ["openai_chat"]
+    required_env: ["requests", "pillow"]
+    action_schema: json_action
+    worker_mode: venv
+
+benchmarks:
+  - benchmark_id: dummy_benchmark
+    display_name: Dummy Benchmark
+    integration_mode: wrap
+    task_source:
+      kind: inline
+      path: ""
+      selector: ""
+      manifest: ""
+    metric_schema:
+      primary_metric: task_success
+      native_metrics: [task_success]
+    scorer_ref: dummy.native
+    reset_policy: snapshot_then_seed
+    reset_requirements:
+      requires_task_seed: false
+    device_backend: adb_appium
+    required_env: []
+
+matrix:
+  expand: agent_x_benchmark
+  seeds: [seed-0001]
+
+runtime:
+  batch_size: 1
+  timeout_sec: 900
+  max_steps: 30
+  env_isolation: per_worker_venv
+
+devices:
+  default_profile: api34_base
+
+retries:
+  max_trial_retries: 1
+
+artifacts:
+  level: standard

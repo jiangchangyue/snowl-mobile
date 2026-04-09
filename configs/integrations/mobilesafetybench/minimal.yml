@@ -1,0 +1,103 @@
+project:
+  name: mobilesafetybench-minimal
+  run_name: mobilesafetybench-minimal
+  description: Minimal MobileSafetyBench integration config for platform-level validation with a dummy agent.
+
+models:
+  - id: dummy_text_model
+    provider: openai
+    api_style: openai_chat
+    modalities: [text]
+    supports_image_input: false
+    supports_tool_calling: false
+    supports_json_mode: false
+
+agents:
+  - id: dummy_text_agent
+    display_name: Dummy Text Agent
+    variant: default
+    model_ref: dummy_text_model
+    integration_mode: native
+    required_modalities: [text]
+    supported_modalities: [text]
+    supported_model_protocols: [openai_chat]
+    supports_tool_calling: false
+    supports_image_input: false
+    supports_json_mode: false
+    requires_tool_calling: false
+    requires_json_mode: false
+    required_env: []
+    action_schema: dummy_text_action_v1
+    prompt_contract_version: dummy.v1
+    worker_mode: in_process
+    supported_benchmarks: [mobilesafetybench]
+
+benchmarks:
+  - id: mobilesafetybench
+    display_name: MobileSafetyBench
+    integration_mode: hybrid
+    task_source:
+      kind: reference_repo
+      path: references/benchmarks/mobilesafetybench
+      selector: task_category=text_message_sending,task_id=high_risk_001,limit=1
+      manifest: asset/tasks/tasks.json
+    metric_schema:
+      primary: task_success
+      native: [goal_achievement, harm_prevention, risk_detected_step, finished, step_count]
+    scorer_ref: mobilesafetybench.native
+    reset_policy: snapshot_then_seed
+    reset_requirements:
+      requires_task_seed: false
+      upstream_reset_entry: mobile_safety/environment.py::MobileSafetyEnv.reset
+    device_backend: adb_appium
+    required_env: [ANDROID_SDK_ROOT, APPIUM_BIN, MOBILE_SAFETY_HOME]
+    supported_agent_ids: [dummy_text_agent]
+
+matrix:
+  expand: agent_x_benchmark
+  seeds: [seed-0001]
+
+runtime:
+  batch_size: 1
+  default_worker_mode: venv
+  observation_mode: image_text
+  env_isolation: per_worker_venv
+  max_steps: 15
+  timeout_sec: 900
+
+devices:
+  emulator_profiles:
+    - id: api34_base
+      base_avd_name: pixel_7_test_00
+      platform: android
+      api_level: 34
+      system_image: android-34/google_apis/x86_64
+      snapshot_name: test_env_100
+      screen_size: 1080x2400
+      tags: [mobilesafetybench, baseline]
+  default_profile: api34_base
+  control_backend: adb_appium
+
+reset:
+  name: snapshot_then_seed
+  scope: trial
+  baseline_snapshot: test_env_100
+  allow_benchmark_seed: true
+  healthcheck_timeout_sec: 120
+
+retries:
+  max_trial_retries: 1
+  max_step_retries: 0
+  backoff_sec: 3
+  retry_on: [MODEL_API_ERROR, TIMEOUT_ERROR, WORKER_TRANSIENT_ERROR]
+
+artifacts:
+  level: standard
+  root_dir: runs/
+  persist_step_artifacts: true
+  persist_logs: true
+  persist_prompt_payloads: false
+
+monitoring:
+  cli_live_panel: true
+  web_viewer: false

@@ -1,0 +1,10 @@
+[
+  {
+    "task_id": "mock-benchmark-task-001",
+    "instruction": "Open the sample screen."
+  },
+  {
+    "task_id": "mock-benchmark-task-002",
+    "instruction": "Collect a sample trajectory."
+  }
+]

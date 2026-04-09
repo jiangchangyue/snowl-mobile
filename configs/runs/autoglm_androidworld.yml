@@ -1,0 +1,157 @@
+# Canonical checked-in real run config for Open-AutoGLM x AndroidWorld.
+# Default behavior targets the current full `android_world` suite, while batch size,
+# model endpoint settings, and max steps can be overridden from the CLI.
+# For a one-task smoke run, override with environment variables instead of using a
+# separate config file:
+#   SNOWL_ANDROIDWORLD_SUITE_FAMILY=android
+#   SNOWL_ANDROIDWORLD_TASKS=SimpleSmsSend
+
+project:
+  name: ${SNOWL_PROJECT_NAME:-open-autoglm-androidworld}
+  run_name: ${SNOWL_RUN_NAME:-open_autoglm__androidworld}
+  description: Canonical checked-in run config for Open-AutoGLM x AndroidWorld with a full-suite default and env-driven smoke overrides.
+
+models:
+  - id: ${PHONE_AGENT_MODEL:-gpt-4o}
+    provider: openai_compatible
+    api_style: openai_chat
+    modalities: [text, image]
+    supports_image_input: true
+    supports_tool_calling: false
+    supports_json_mode: false
+
+agents:
+  - id: open_autoglm
+    display_name: Open-AutoGLM
+    variant: default
+    model_ref: ${PHONE_AGENT_MODEL:-gpt-4o}
+    integration_mode: hybrid
+    required_modalities: [text, image]
+    supported_modalities: [text, image]
+    supported_backends: [adb_appium, adb, hdc, ios_wda]
+    supported_model_protocols: [openai_chat]
+    supports_tool_calling: false
+    supports_image_input: true
+    supports_json_mode: false
+    requires_tool_calling: false
+    requires_json_mode: false
+    required_env: [OPEN_AUTOGLM_HOME]
+    action_schema: autoglm_phone_action_v1
+    prompt_contract_version: open-autoglm.v1
+    worker_mode: venv
+    supported_benchmarks: [androidworld, mobilesafetybench]
+
+benchmarks:
+  - id: androidworld
+    display_name: AndroidWorld
+    integration_mode: hybrid
+    task_source:
+      kind: reference_repo
+      path: references/benchmarks/android_world
+      selector: ${SNOWL_ANDROIDWORLD_SELECTOR:-all}
+      manifest: android_world/registry.py
+    metric_schema:
+      primary: task_success
+      native: [task_success, episode_length, env_reward]
+    scorer_ref: androidworld.native
+    reset_policy: benchmark_native_reset
+    reset_requirements:
+      requires_existing_emulator: true
+      requires_grpc_emulator: true
+      upstream_setup_entry: android_world/env/env_launcher.py::load_and_setup_env
+      upstream_reset_entry: android_world/env/interface.py::AsyncEnv.reset
+    device_backend: adb
+    required_env: [ANDROID_SDK_ROOT, ANDROID_WORLD_HOME]
+    supported_agent_ids: [open_autoglm]
+    options:
+      suite_family: ${SNOWL_ANDROIDWORLD_SUITE_FAMILY:-android_world}
+      perform_emulator_setup: false
+      tasks: ${SNOWL_ANDROIDWORLD_TASKS:-}
+      n_task_combinations: 1
+      task_random_seed: 30
+      fixed_task_seed: false
+      checkpoint_dir: ${SNOWL_ANDROIDWORLD_CHECKPOINT_DIR:-}
+      output_path: ${SNOWL_ANDROIDWORLD_OUTPUT_PATH:-}
+      adb_path: ${SNOWL_ANDROIDWORLD_ADB_PATH:-}
+      console_port: 5554
+      grpc_port: 8554
+      freeze_datetime: true
+      python_executable: ${ANDROID_WORLD_PYTHON:-}
+      requirements_file: references/benchmarks/android_world/requirements.txt
+      worker_env_name: androidworld
+
+pair_runtime_recipes:
+  - recipe_id: open_autoglm_androidworld_existing_device
+    agent_id: open_autoglm
+    benchmark_id: androidworld
+    bridge_id: open_autoglm__androidworld
+    requires_bridge: true
+    worker_mode: in_process
+    env_isolation: host
+    observation_mode: benchmark_native
+    control_backend: adb
+    reset_policy: benchmark_native_reset
+    backend_requirements: [adb]
+    required_env:
+      - OPEN_AUTOGLM_HOME
+      - ANDROID_WORLD_HOME
+      - ANDROID_SDK_ROOT
+      - PHONE_AGENT_BASE_URL
+      - PHONE_AGENT_API_KEY
+    launch_hints:
+      mode: existing_device_real_pair
+      run_entry: snowl_mobile.adapters.bridges.open_autoglm_androidworld
+      run_scope: full_suite
+      resume_strategy: reuse_output_dir
+
+matrix:
+  expand: agent_x_benchmark
+  seeds: [seed-0001]
+
+runtime:
+  batch_size: 1
+  default_worker_mode: venv
+  observation_mode: benchmark_native
+  env_isolation: per_worker_venv
+  max_steps: 30
+  timeout_sec: 3600
+
+devices:
+  device_mode: existing_device
+  adb_serials: [${SNOWL_ANDROIDWORLD_ADB_SERIAL:-emulator-5554}]
+  emulator_profiles:
+    - id: androidworld_api33
+      base_avd_name: ${SNOWL_ANDROIDWORLD_AVD_NAME:-AndroidWorldAvd}
+      platform: android
+      api_level: 33
+      system_image: android-33/google_apis/x86_64
+      snapshot_name: androidworld_base
+      screen_size: 1080x2400
+      grpc_port: 8554
+      tags: [androidworld, autoglm, real-run, full-suite]
+  default_profile: androidworld_api33
+  control_backend: adb
+
+reset:
+  name: benchmark_native_reset
+  scope: trial
+  baseline_snapshot: androidworld_base
+  allow_benchmark_seed: true
+  healthcheck_timeout_sec: 120
+
+retries:
+  max_trial_retries: 1
+  max_step_retries: 0
+  backoff_sec: 10
+  retry_on: [ADB_BACKEND_ERROR, TIMEOUT_ERROR]
+
+artifacts:
+  level: standard
+  root_dir: runs/
+  persist_step_artifacts: true
+  persist_logs: true
+  persist_prompt_payloads: true
+
+monitoring:
+  cli_live_panel: true
+  web_viewer: false
