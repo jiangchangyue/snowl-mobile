@@ -320,6 +320,69 @@ def _post_action_settle_seconds(action_type: str) -> float:
     return 0.0
 
 
+def _remove_file_if_present(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+
+
+def _validate_captured_image(image_path: Path) -> None:
+    pil_image_module = importlib.import_module("PIL.Image")
+    image = pil_image_module.open(str(image_path))
+    try:
+        verify = getattr(image, "verify", None)
+        if callable(verify):
+            verify()
+            return
+        size = getattr(image, "size", None)
+        if not size:
+            width = getattr(image, "width", None)
+            height = getattr(image, "height", None)
+            if width and height:
+                size = (width, height)
+        if not (isinstance(size, tuple) and len(size) == 2):
+            raise RuntimeError(
+                f"Captured screenshot '{image_path}' did not expose a readable image size."
+            )
+    finally:
+        close = getattr(image, "close", None)
+        if callable(close):
+            close()
+
+
+def _capture_validated_screenshot(
+    *,
+    adb_tools: object,
+    adb_serial: str,
+    screenshot_path: Path,
+    max_attempts: int = 3,
+    retry_delay_seconds: float = 0.2,
+) -> None:
+    last_error: Exception | None = None
+    screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(1, max_attempts + 1):
+        _remove_file_if_present(screenshot_path)
+        try:
+            if not adb_tools.get_screenshot(str(screenshot_path)):
+                raise RuntimeError(
+                    f"Mobile-Agent-v3.5 screenshot capture failed for device '{adb_serial}'."
+                )
+            _validate_captured_image(screenshot_path)
+            return
+        except Exception as exc:
+            last_error = exc
+            _remove_file_if_present(screenshot_path)
+            if attempt < max_attempts:
+                time.sleep(retry_delay_seconds)
+    raise RuntimeError(
+        "Mobile-Agent-v3.5 screenshot capture produced an unreadable image "
+        f"for device '{adb_serial}' after {max_attempts} attempt(s)."
+    ) from last_error
+
+
 def _capture_observation(
     *,
     adb_tools: object,
@@ -329,10 +392,11 @@ def _capture_observation(
     xml_path: Path,
     capture_xml_via_adb: bool,
 ) -> None:
-    if not adb_tools.get_screenshot(str(screenshot_path)):
-        raise RuntimeError(
-            f"Mobile-Agent-v3.5 screenshot capture failed for device '{adb_serial}'."
-        )
+    _capture_validated_screenshot(
+        adb_tools=adb_tools,
+        adb_serial=adb_serial,
+        screenshot_path=screenshot_path,
+    )
     if not capture_xml_via_adb:
         xml_path.parent.mkdir(parents=True, exist_ok=True)
         xml_path.write_text("<hierarchy></hierarchy>\n", encoding="utf-8")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -37,6 +38,13 @@ from snowl_mobile.schemas.observation import ObservationBundle
 
 MOBILE_AGENT_V3_5_REPO = ROOT / "references" / "agents" / "MobileAgent" / "Mobile-Agent-v3.5"
 MOBILE_AGENT_V3_5_CONFIG = ROOT / "configs" / "runs" / "mobile_agent_v3_5_mobilesafetybench.yml"
+_TEST_PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg=="
+)
+
+
+def _write_test_png(path: Path) -> None:
+    path.write_bytes(_TEST_PNG_BYTES)
 
 
 class MobileAgentV35AdapterTestCase(unittest.TestCase):
@@ -231,7 +239,7 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
 
                 @staticmethod
                 def get_screenshot(image_path: str) -> bool:
-                    Path(image_path).write_bytes(b"png")
+                    _write_test_png(Path(image_path))
                     return True
 
             class DummyGUIOwlWrapper:
@@ -412,10 +420,13 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
             class DummyAdbTools:
                 @staticmethod
                 def get_screenshot(image_path: str) -> bool:
-                    Path(image_path).write_bytes(b"png")
+                    _write_test_png(Path(image_path))
                     return True
 
-            with patch.object(runner_module, "_dump_ui_hierarchy_xml") as dump_mock:
+            with patch.object(runner_module, "_dump_ui_hierarchy_xml") as dump_mock, patch.object(
+                runner_module,
+                "_validate_captured_image",
+            ) as validate_mock:
                 runner_module._capture_observation(
                     adb_tools=DummyAdbTools(),
                     adb_path="/usr/bin/adb",
@@ -426,6 +437,45 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
                 )
 
             dump_mock.assert_not_called()
+            validate_mock.assert_called_once_with(screenshot_path)
+            self.assertEqual(xml_path.read_text(encoding="utf-8"), "<hierarchy></hierarchy>\n")
+
+    def test_runner_capture_observation_retries_when_screenshot_is_unreadable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            screenshot_path = Path(temp_dir) / "screen.png"
+            xml_path = Path(temp_dir) / "window.xml"
+            capture_attempts: list[int] = []
+
+            class DummyAdbTools:
+                @staticmethod
+                def get_screenshot(image_path: str) -> bool:
+                    capture_attempts.append(1)
+                    path = Path(image_path)
+                    if len(capture_attempts) == 1:
+                        path.write_bytes(b"not-a-real-png")
+                    else:
+                        _write_test_png(path)
+                    return True
+
+            with patch.object(runner_module, "_dump_ui_hierarchy_xml") as dump_mock, patch.object(
+                runner_module,
+                "_validate_captured_image",
+                side_effect=[RuntimeError("unreadable screenshot"), None],
+            ) as validate_mock, patch.object(runner_module.time, "sleep") as sleep_mock:
+                runner_module._capture_observation(
+                    adb_tools=DummyAdbTools(),
+                    adb_path="/usr/bin/adb",
+                    adb_serial="emulator-5554",
+                    screenshot_path=screenshot_path,
+                    xml_path=xml_path,
+                    capture_xml_via_adb=False,
+                )
+
+            self.assertEqual(len(capture_attempts), 2)
+            self.assertEqual(validate_mock.call_count, 2)
+            self.assertEqual(sleep_mock.call_count, 1)
+            dump_mock.assert_not_called()
+            self.assertTrue(screenshot_path.exists())
             self.assertEqual(xml_path.read_text(encoding="utf-8"), "<hierarchy></hierarchy>\n")
 
     def test_runner_prefers_previous_absolute_coordinate_space_for_ambiguous_followup_points(self) -> None:
@@ -989,7 +1039,7 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
                 xml_path = work_dir / "xml" / "0001.xml"
                 screenshot_path.parent.mkdir(parents=True, exist_ok=True)
                 xml_path.parent.mkdir(parents=True, exist_ok=True)
-                screenshot_path.write_bytes(b"png")
+                _write_test_png(screenshot_path)
                 xml_path.write_text("<hierarchy />\n", encoding="utf-8")
 
                 raw_output = (
