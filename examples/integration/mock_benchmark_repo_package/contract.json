@@ -1,0 +1,21 @@
+{
+  "action_execution_path": "action_executor.py",
+  "cleanup_entry": "reset_env.py",
+  "environment_init_entry": "reset_env.py",
+  "native_metric_mappings": [
+    {
+      "native_metric": "TODO_native_metric",
+      "platform_metric": "task_success",
+      "rationale": "Map the benchmark-native success metric into the primary platform metric."
+    }
+  ],
+  "observation_form": "ui_tree",
+  "pre_task_setup_entry": "prepare_trial",
+  "raw_artifact_capture_points": [
+    "artifact_capture.py"
+  ],
+  "reset_entry": "reset_env.py",
+  "run_entry": "benchmark_runner.py",
+  "score_capture_entry": "scorer.py",
+  "task_discovery_entry": "tasks/tasks.json"
+}

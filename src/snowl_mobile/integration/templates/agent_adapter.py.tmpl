@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+from snowl_mobile.adapters.agents.base import AgentRuntime, BaseAgentAdapter
+from snowl_mobile.core.agent_spec import AgentSpec
+from snowl_mobile.core.enums import IntegrationMode, WorkerMode
+from snowl_mobile.core.errors import PhaseStubError
+from snowl_mobile.core.trial_context import TrialContext
+from snowl_mobile.schemas.observation import ObservationBundle
+
+
+class _${class_name}Runtime(AgentRuntime):
+    """Placeholder runtime for `${repo_name}`.
+
+    Local repo path: `${repo_path}`
+    Inspector summary: ${summary_excerpt}
+    """
+
+    def create_session(self) -> None:
+        raise PhaseStubError("Scaffold only: wire the upstream runtime or wrap runner here.")
+
+    def step(self, observation: ObservationBundle) -> object:
+        # TODO: transform ObservationBundle into the upstream repo input format.
+        # TODO: parse the upstream action output back into the platform action schema.
+        raise PhaseStubError("Scaffold only: implement the agent step loop here.")
+
+    def close_session(self) -> None:
+        raise PhaseStubError("Scaffold only: close upstream sessions or subprocess handles here.")
+
+
+class ${class_name}(BaseAgentAdapter):
+    @property
+    def adapter_id(self) -> str:
+        return "${adapter_id}"
+
+    def describe(self) -> AgentSpec:
+        return AgentSpec(
+            agent_id=self.adapter_id,
+            display_name="${display_name}",
+            variant="default",
+            model_ref="TODO_model_binding",
+            integration_mode=IntegrationMode.${integration_mode},
+            required_modalities=${required_modalities},
+            supported_modalities=${supported_modalities},
+            supported_model_protocols=("openai_chat",),
+            supports_tool_calling=False,
+            supports_image_input=${supports_image_input},
+            supports_json_mode=${supports_json_mode},
+            requires_tool_calling=False,
+            requires_json_mode=False,
+            required_env=${required_env},
+            action_schema="TODO_action_schema",
+            prompt_contract_version="TODO_prompt_contract",
+            worker_mode=WorkerMode.${worker_mode},
+            supported_benchmarks=${supported_benchmarks},
+        )
+
+    def build_runtime(self, ctx: TrialContext) -> AgentRuntime:
+        # TODO: choose wrap/native/hybrid execution explicitly.
+        # TODO: keep env setup in RuntimeRecipe / worker isolation, not in global imports.
+        return _${class_name}Runtime()

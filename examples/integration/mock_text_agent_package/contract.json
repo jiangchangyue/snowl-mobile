@@ -1,0 +1,37 @@
+{
+  "action_normalization_entry": "mock_agent/action_parser.py",
+  "capability": {
+    "action_output_schema": "json_action",
+    "human_confirmation_mode": "mock_agent/confirmation_gate.py",
+    "input_modalities": [
+      "text"
+    ],
+    "raw_output_capture_points": [
+      "mock_agent/raw_capture.py"
+    ],
+    "requires_json_mode": false,
+    "requires_tool_calling": false,
+    "runtime_requirements": [
+      "requests",
+      "pillow"
+    ],
+    "supported_model_protocols": [
+      "openai_chat"
+    ],
+    "supports_image_input": false,
+    "supports_json_mode": true,
+    "supports_tool_calling": false,
+    "tool_backends": [
+      "adb",
+      "appium"
+    ]
+  },
+  "device_control_entry": "mock_agent/device_controller.py",
+  "model_call_entry": "mock_agent/model_client.py",
+  "observation_transform_entry": "examples/run_demo.py",
+  "raw_output_capture_points": [
+    "mock_agent/raw_capture.py"
+  ],
+  "run_entry": "examples/run_demo.py",
+  "step_entry": "examples/run_demo.py"
+}

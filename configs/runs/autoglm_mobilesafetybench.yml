@@ -1,0 +1,134 @@
+# Recommended checked-in real-pair config.
+# In normal use, keep this file stable and pass runtime overrides from the CLI
+# such as --model-name / --base-url / --api-key / --max-steps / --batch-size.
+# This checked-in run config now defaults to all MobileSafetyBench tasks.
+# For a quick smoke run, override SNOWL_TASK_SELECTOR, for example:
+#   SNOWL_TASK_SELECTOR='task_category=text_message_sending,task_id=high_risk_001,limit=1'
+
+project:
+  name: open-autoglm-mobilesafetybench
+  run_name: open_autoglm__mobilesafetybench
+  description: Checked-in real-pair run for Open-AutoGLM x MobileSafetyBench with the default full-task selector and CLI-friendly runtime overrides.
+
+models:
+  - id: gpt-4o
+    provider: openai_compatible
+    api_style: openai_chat
+    modalities: [text, image]
+    supports_image_input: true
+    supports_tool_calling: false
+    supports_json_mode: false
+
+agents:
+  - id: open_autoglm
+    display_name: Open-AutoGLM
+    variant: default
+    model_ref: gpt-4o
+    integration_mode: hybrid
+    required_modalities: [text, image]
+    supported_modalities: [text, image]
+    supported_backends: [adb_appium, adb, hdc, ios_wda]
+    supported_model_protocols: [openai_chat]
+    supports_tool_calling: false
+    supports_image_input: true
+    supports_json_mode: false
+    requires_tool_calling: false
+    requires_json_mode: false
+    required_env: [OPEN_AUTOGLM_HOME]
+    action_schema: autoglm_phone_action_v1
+    prompt_contract_version: open-autoglm.v1
+    worker_mode: venv
+    supported_benchmarks: [mobilesafetybench]
+
+benchmarks:
+  - id: mobilesafetybench
+    display_name: MobileSafetyBench
+    integration_mode: hybrid
+    task_source:
+      kind: reference_repo
+      path: references/benchmarks/mobilesafetybench
+      selector: ${SNOWL_TASK_SELECTOR:-all}
+      manifest: asset/tasks/tasks.json
+    metric_schema:
+      primary: task_success
+      native: [goal_achievement, harm_prevention, risk_detected_step, finished, step_count]
+    scorer_ref: mobilesafetybench.native
+    reset_policy: snapshot_then_seed
+    reset_requirements:
+      baseline_snapshot: test_env_100
+      requires_task_seed: false
+      upstream_reset_entry: mobile_safety/environment.py::MobileSafetyEnv.reset
+    device_backend: adb_appium
+    required_env: [ANDROID_SDK_ROOT, APPIUM_BIN, MOBILE_SAFETY_HOME]
+    supported_agent_ids: [open_autoglm]
+
+pair_runtime_recipes:
+  - recipe_id: open_autoglm_mobilesafetybench_existing_device
+    agent_id: open_autoglm
+    benchmark_id: mobilesafetybench
+    bridge_id: open_autoglm__mobilesafetybench
+    requires_bridge: true
+    worker_mode: in_process
+    env_isolation: host
+    control_backend: adb_appium
+    reset_policy: snapshot_then_seed
+    backend_requirements: [adb_appium]
+    required_env:
+      - OPEN_AUTOGLM_HOME
+      - MOBILE_SAFETY_HOME
+      - PHONE_AGENT_BASE_URL
+      - PHONE_AGENT_API_KEY
+      - APPIUM_BIN
+    launch_hints:
+      mode: existing_device_real_pair
+      run_entry: snowl_mobile.adapters.bridges.open_autoglm_mobilesafetybench
+
+matrix:
+  expand: agent_x_benchmark
+  seeds: [seed-0001]
+
+runtime:
+  batch_size: 1
+  default_worker_mode: venv
+  observation_mode: image_text
+  env_isolation: per_worker_venv
+  max_steps: 20
+  timeout_sec: 1800
+
+devices:
+  device_mode: existing_device
+  emulator_profiles:
+    - id: api34_base
+      base_avd_name: pixel_7_test_00
+      platform: android
+      api_level: 34
+      system_image: android-34/google_apis/x86_64
+      snapshot_name: test_env_100
+      screen_size: 1080x2400
+      tags: [autoglm, mobilesafetybench, real-run]
+  default_profile: api34_base
+  control_backend: adb_appium
+
+reset:
+  name: snapshot_then_seed
+  scope: trial
+  baseline_snapshot: test_env_100
+  allow_benchmark_seed: true
+  healthcheck_timeout_sec: 120
+
+retries:
+  max_trial_retries: 0
+  max_step_retries: 0
+  backoff_sec: 3
+  retry_on: [ADB_BACKEND_ERROR, TIMEOUT_ERROR]
+
+artifacts:
+  level: standard
+  root_dir: runs/
+  persist_step_artifacts: true
+  persist_logs: true
+  persist_prompt_payloads: true
+
+monitoring:
+  cli_live_panel: true
+  web_viewer: false

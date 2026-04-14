@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class TrialStatus(StrEnum):
+    PENDING = "PENDING"
+    SCHEDULED = "SCHEDULED"
+    PREPARING = "PREPARING"
+    RUNNING = "RUNNING"
+    SCORING = "SCORING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    RETRY_WAITING = "RETRY_WAITING"
+    SKIPPED = "SKIPPED"
+    ABORTED = "ABORTED"
+
+
+class RunStatus(StrEnum):
+    CREATED = "CREATED"
+    PLANNED = "PLANNED"
+    BOOTSTRAPPING = "BOOTSTRAPPING"
+    RUNNING = "RUNNING"
+    PARTIALLY_FAILED = "PARTIALLY_FAILED"
+    COMPLETED = "COMPLETED"
+    ABORTED = "ABORTED"

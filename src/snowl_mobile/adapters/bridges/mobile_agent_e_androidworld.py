@@ -1,0 +1,566 @@
+from __future__ import annotations
+
+import json
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+from snowl_mobile.adapters.agents.mobile_agent_e import (
+    MobileAgentEAgentAdapter,
+    resolve_mobile_agent_e_repo_path,
+)
+from snowl_mobile.adapters.benchmarks.androidworld import (
+    AndroidWorldBenchmarkAdapter,
+    resolve_androidworld_repo_path,
+)
+from snowl_mobile.adapters.bridges.contract import BridgeContract
+from snowl_mobile.adapters.bridges.open_autoglm_androidworld import (
+    OpenAutoGLMAndroidWorldBridgeAdapter,
+    _relative_to,
+    _run_bridge_subprocess,
+)
+from snowl_mobile.core.errors import DeviceError, IntegrationError
+from snowl_mobile.core.enums import IntegrationMode
+from snowl_mobile.core.trial_context import TrialContext
+from snowl_mobile.devices.android_ports import (
+    resolve_androidworld_console_port,
+    resolve_androidworld_grpc_port,
+)
+from snowl_mobile.devices.emulator_instance import EmulatorInstance
+from snowl_mobile.models.model_spec import ModelSpec
+from snowl_mobile.scoring.score_bundle import ScoreBundle
+from snowl_mobile.schemas.observation import ObservationBundle
+
+
+@dataclass(frozen=True, slots=True)
+class MobileAgentEAndroidWorldRunRequest:
+    trial_context: TrialContext
+    output_dir: Path
+    emulator_instance: EmulatorInstance
+    model_spec: ModelSpec
+    task_payload: dict[str, object]
+    task_instruction: str
+    mock_mode: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class MobileAgentEAndroidWorldRunResult:
+    score_bundle: ScoreBundle
+    trajectory_steps: tuple[object, ...]
+    raw_artifacts: dict[str, str]
+    platform_metrics: dict[str, object]
+    notes: tuple[str, ...] = ()
+
+
+class MobileAgentEAndroidWorldBridgeAdapter(OpenAutoGLMAndroidWorldBridgeAdapter):
+    @property
+    def adapter_id(self) -> str:
+        return "mobile_agent_e__androidworld"
+
+    @property
+    def agent_id(self) -> str:
+        return "mobile_agent_e"
+
+    @property
+    def benchmark_id(self) -> str:
+        return "androidworld"
+
+    def describe_bridge(self) -> BridgeContract:
+        return BridgeContract(
+            bridge_id=self.adapter_id,
+            agent_id=self.agent_id,
+            benchmark_id=self.benchmark_id,
+            integration_mode=IntegrationMode.HYBRID,
+            observation_mapping_entry=(
+                "AndroidWorld env bootstrap/get_state -> ObservationBundle -> "
+                "Mobile-Agent-E wrapped runner"
+            ),
+            action_mapping_entry=(
+                "Mobile-Agent-E JSON actions remain agent-owned while AndroidWorld owns "
+                "task bootstrap, reset, and final native success scoring"
+            ),
+            run_entry="MobileAgentEAndroidWorldBridgeAdapter.run_wrapped_pair",
+            environment_handshake_entry=(
+                "existing Android emulator lease + AndroidWorld load_and_setup_env + "
+                "Mobile-Agent-E subprocess runner"
+            ),
+            artifact_capture_hooks=(
+                "trial/raw/mobile_agent_e_androidworld/bridge_request.json",
+                "trial/raw/mobile_agent_e_androidworld/bridge_stdout.txt",
+                "trial/raw/mobile_agent_e_androidworld/bridge_stderr.txt",
+                "trial/raw/mobile_agent_e_androidworld/final_result.json",
+                "trial/raw/mobile_agent_e_androidworld/steps/0001.console.txt",
+                "trial/raw/mobile_agent_e/runner_result.json",
+                "trial/trajectory.json",
+            ),
+            supported_backends=("adb",),
+            required_env=(
+                "MOBILE_AGENT_E_HOME",
+                "ANDROID_WORLD_HOME",
+                "ANDROID_SDK_ROOT",
+            ),
+            requires_pair_recipe=True,
+        )
+
+    def map_observation(self, observation: ObservationBundle) -> ObservationBundle:
+        extra = dict(observation.extra)
+        extra.setdefault("bridge_id", self.adapter_id)
+        extra.setdefault("pair_mode", "mobile_agent_e_x_androidworld")
+        return ObservationBundle(
+            timestamp=observation.timestamp,
+            screenshot_path=observation.screenshot_path,
+            xml_path=observation.xml_path,
+            ui_tree_json_path=observation.ui_tree_json_path,
+            parsed_text=observation.parsed_text,
+            activity=observation.activity,
+            package_name=observation.package_name,
+            screen_size=observation.screen_size,
+            orientation=observation.orientation,
+            source_backend=observation.source_backend or "bridge.mobile_agent_e_androidworld",
+            extra=extra,
+        )
+
+    def build_run_request(
+        self,
+        ctx: TrialContext,
+        *,
+        output_dir: Path,
+        emulator_instance: EmulatorInstance,
+        model_spec: ModelSpec,
+        task_payload: dict[str, object],
+        task_instruction: str,
+        mock_mode: bool,
+    ) -> MobileAgentEAndroidWorldRunRequest:
+        return MobileAgentEAndroidWorldRunRequest(
+            trial_context=ctx,
+            output_dir=output_dir,
+            emulator_instance=emulator_instance,
+            model_spec=model_spec,
+            task_payload=task_payload,
+            task_instruction=task_instruction,
+            mock_mode=mock_mode,
+        )
+
+    def run_wrapped_pair(
+        self,
+        request: MobileAgentEAndroidWorldRunRequest,
+    ) -> MobileAgentEAndroidWorldRunResult:
+        if request.mock_mode:
+            return self._run_mock_pair(request)
+        return self._run_real_pair(request)
+
+    def run_trial(self, ctx: TrialContext) -> object:
+        raise IntegrationError(
+            "This bridge requires a structured run request. Use build_run_request() + run_wrapped_pair()."
+        )
+
+    def _run_mock_pair(
+        self,
+        request: MobileAgentEAndroidWorldRunRequest,
+    ) -> MobileAgentEAndroidWorldRunResult:
+        benchmark_adapter = AndroidWorldBenchmarkAdapter()
+        agent_adapter = MobileAgentEAgentAdapter()
+        ctx = request.trial_context
+        probe_request = benchmark_adapter.build_probe_request(
+            ctx,
+            output_dir=request.output_dir,
+            operation="bootstrap",
+            task_payload=request.task_payload,
+            task_instruction=request.task_instruction,
+            emulator_instance=request.emulator_instance,
+            mock_mode=True,
+        )
+        probe_result = benchmark_adapter.run_benchmark_probe(probe_request)
+        observation = self.map_observation(probe_result.observation)
+        agent_request = agent_adapter.build_run_request(
+            ctx,
+            output_dir=request.output_dir,
+            observation=observation,
+            task_instruction=request.task_instruction
+            or str(request.task_payload.get("instruction", "")),
+            model_spec=request.model_spec,
+            emulator_instance=request.emulator_instance,
+            task_payload=request.task_payload,
+            mock_mode=True,
+        )
+        agent_result = agent_adapter.run_wrapped_agent(agent_request)
+
+        bridge_raw_dir = request.output_dir / "raw" / "mobile_agent_e_androidworld"
+        bridge_raw_dir.mkdir(parents=True, exist_ok=True)
+        request_path = bridge_raw_dir / "bridge_request.json"
+        result_path = bridge_raw_dir / "final_result.json"
+        request_path.write_text(
+            json.dumps(self._request_payload(request), indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        platform_metrics = {
+            **dict(probe_result.score_bundle.platform_metrics),
+            **dict(agent_result.platform_metrics),
+            "control_backend": "adb",
+            "pair_bridge": self.adapter_id,
+            "mock_mode": True,
+        }
+        notes = tuple(
+            dict.fromkeys(
+                [
+                    *list(probe_result.notes),
+                    "Mobile-Agent-E x AndroidWorld mock bridge path exercised the benchmark bootstrap and wrapped-agent path without real device execution.",
+                ]
+            )
+        )
+        score_bundle = ScoreBundle(
+            native_metrics=dict(probe_result.score_bundle.native_metrics),
+            primary_metric=probe_result.score_bundle.primary_metric,
+            platform_metrics=platform_metrics,
+            notes=list(notes),
+        )
+        result_path.write_text(
+            json.dumps(
+                {
+                    "score_bundle": score_bundle.to_dict(),
+                    "platform_metrics": platform_metrics,
+                    "notes": list(notes),
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        raw_artifacts = {
+            "bridge_request": request_path.relative_to(request.output_dir).as_posix(),
+            "bridge_result": result_path.relative_to(request.output_dir).as_posix(),
+            **{f"androidworld_{key}": value for key, value in probe_result.raw_artifacts.items()},
+            **{
+                f"mobile_agent_e_{key}": str(_relative_to(value, root=request.output_dir))
+                for key, value in agent_result.raw_artifacts.items()
+            },
+        }
+        return MobileAgentEAndroidWorldRunResult(
+            score_bundle=score_bundle,
+            trajectory_steps=agent_result.trajectory_steps,
+            raw_artifacts=raw_artifacts,
+            platform_metrics=platform_metrics,
+            notes=notes,
+        )
+
+    def _run_real_pair(
+        self,
+        request: MobileAgentEAndroidWorldRunRequest,
+    ) -> MobileAgentEAndroidWorldRunResult:
+        self._validate_real_env(request)
+        request.output_dir.mkdir(parents=True, exist_ok=True)
+        bridge_raw_dir = request.output_dir / "raw" / "mobile_agent_e_androidworld"
+        bridge_raw_dir.mkdir(parents=True, exist_ok=True)
+
+        runtime_recipe = request.trial_context.trial_spec.runtime_recipe
+        benchmark_options_raw = runtime_recipe.launch_hints.get("benchmark_options_json", "")
+        if not benchmark_options_raw:
+            raise IntegrationError(
+                "AndroidWorld bridge is missing benchmark_options_json in the runtime recipe."
+            )
+        try:
+            benchmark_options = json.loads(benchmark_options_raw)
+        except json.JSONDecodeError as error:
+            raise IntegrationError("AndroidWorld bridge received invalid benchmark_options_json.") from error
+        if not isinstance(benchmark_options, dict):
+            raise IntegrationError("AndroidWorld bridge expects benchmark_options_json to decode to an object.")
+
+        mobile_agent_e_repo = resolve_mobile_agent_e_repo_path()
+        androidworld_repo = resolve_androidworld_repo_path(
+            Path(runtime_recipe.launch_hints.get("benchmark_task_source_path", ""))  # type: ignore[arg-type]
+            if runtime_recipe.launch_hints.get("benchmark_task_source_path", "")
+            else None
+        )
+        python_executable = (
+            str(benchmark_options.get("python_executable", "")).strip()
+            or os.environ.get("ANDROID_WORLD_PYTHON", "").strip()
+            or sys.executable
+        )
+        request_payload = self._request_payload(request)
+        request_payload.update(
+            {
+                "benchmark_options": benchmark_options,
+                "repo_paths": {
+                    "mobile_agent_e": mobile_agent_e_repo.as_posix(),
+                    "androidworld": androidworld_repo.as_posix(),
+                },
+                "python_executable": python_executable,
+                "device": {
+                    "adb_serial": request.emulator_instance.adb_serial,
+                    "console_port": resolve_androidworld_console_port(
+                        emulator_instance=request.emulator_instance,
+                        runtime_recipe_ports=runtime_recipe.ports,
+                        benchmark_options=benchmark_options,
+                    ),
+                    "grpc_port": resolve_androidworld_grpc_port(
+                        emulator_instance=request.emulator_instance,
+                        runtime_recipe_ports=runtime_recipe.ports,
+                        benchmark_options=benchmark_options,
+                    ),
+                },
+                "model": {
+                    "model_id": request.model_spec.model_id,
+                    "provider": request.model_spec.provider,
+                    "api_style": request.model_spec.api_style,
+                    "modalities": list(request.model_spec.modalities),
+                    "supports_image_input": request.model_spec.supports_image_input,
+                },
+                "max_steps": request.trial_context.trial_spec.max_steps,
+                "timeout_sec": request.trial_context.trial_spec.timeout_sec,
+            }
+        )
+
+        request_path = bridge_raw_dir / "bridge_request.json"
+        result_path = bridge_raw_dir / "final_result.json"
+        stdout_path = bridge_raw_dir / "bridge_stdout.txt"
+        stderr_path = bridge_raw_dir / "bridge_stderr.txt"
+        failure_path = bridge_raw_dir / "failure.json"
+        request_path.write_text(json.dumps(request_payload, indent=2, sort_keys=True), encoding="utf-8")
+
+        command = [
+            python_executable,
+            "-m",
+            "snowl_mobile.adapters.bridges.mobile_agent_e_androidworld_runtime",
+            request_path.as_posix(),
+            result_path.as_posix(),
+        ]
+        env = os.environ.copy()
+        src_root = Path(__file__).resolve().parents[3]
+        pythonpath_entries = [src_root.as_posix(), mobile_agent_e_repo.as_posix(), androidworld_repo.as_posix()]
+        if env.get("PYTHONPATH"):
+            pythonpath_entries.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+        env["MOBILE_AGENT_E_HOME"] = mobile_agent_e_repo.as_posix()
+        env["ANDROID_WORLD_HOME"] = androidworld_repo.as_posix()
+        completed = _run_bridge_subprocess(
+            command=command,
+            cwd=Path(__file__).resolve().parents[4],
+            env=env,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            failure_path=failure_path,
+            timeout_sec=max(1, int(request.trial_context.trial_spec.timeout_sec or 1)),
+            label="Mobile-Agent-E x AndroidWorld bridge subprocess",
+        )
+        stdout_path.write_text(completed.stdout, encoding="utf-8")
+        stderr_path.write_text(completed.stderr, encoding="utf-8")
+
+        if completed.returncode != 0:
+            failure_detail = self._load_failure_payload(failure_path)
+            message = self._format_runtime_failure(
+                failure_detail=failure_detail,
+                stderr_path=stderr_path,
+                request=request,
+            )
+            raise IntegrationError(message)
+
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise IntegrationError(
+                "Mobile-Agent-E x AndroidWorld bridge returned invalid JSON. "
+                f"See {result_path.relative_to(request.output_dir).as_posix()}."
+            ) from error
+        if not isinstance(payload, dict):
+            raise IntegrationError("Mobile-Agent-E x AndroidWorld bridge returned a non-object result payload.")
+
+        score_bundle = ScoreBundle(
+            native_metrics=dict(payload.get("native_metrics", {})),
+            primary_metric=payload.get("primary_metric"),
+            platform_metrics=dict(payload.get("platform_metrics", {})),
+            notes=list(payload.get("notes", [])),
+        )
+        trajectory_steps = tuple(
+            self._trajectory_step_from_payload(step, output_dir=request.output_dir)
+            for step in payload.get("trajectory_steps", [])
+            if isinstance(step, dict)
+        )
+        raw_artifacts = {
+            "bridge_request": request_path.relative_to(request.output_dir).as_posix(),
+            "bridge_stdout": stdout_path.relative_to(request.output_dir).as_posix(),
+            "bridge_stderr": stderr_path.relative_to(request.output_dir).as_posix(),
+            "bridge_result": result_path.relative_to(request.output_dir).as_posix(),
+            **{
+                str(key): str(value)
+                for key, value in dict(payload.get("raw_artifacts", {})).items()
+            },
+        }
+        notes = tuple(payload.get("notes", []))
+        return MobileAgentEAndroidWorldRunResult(
+            score_bundle=score_bundle,
+            trajectory_steps=trajectory_steps,
+            raw_artifacts=raw_artifacts,
+            platform_metrics=dict(payload.get("platform_metrics", {})),
+            notes=notes,
+        )
+
+    def _validate_real_env(
+        self,
+        request: MobileAgentEAndroidWorldRunRequest,
+    ) -> None:
+        if request.emulator_instance.adb_serial.strip() == "":
+            raise DeviceError("no adb serial is attached to the leased emulator instance")
+        if request.emulator_instance.grpc_port < 1:
+            raise DeviceError(
+                "AndroidWorld requires a grpc_port on the leased emulator instance. "
+                "Launch the emulator from the CLI with the AndroidWorld `-grpc` flag."
+            )
+        if "image" not in request.model_spec.modalities or not request.model_spec.supports_image_input:
+            raise IntegrationError(
+                "Mobile-Agent-E requires a model with text+image modalities and image input support."
+            )
+
+    def _request_payload(
+        self,
+        request: MobileAgentEAndroidWorldRunRequest,
+    ) -> dict[str, object]:
+        return {
+            "trial_id": request.trial_context.trial_spec.trial_id,
+            "task_id": request.trial_context.trial_spec.task_id,
+            "task_instruction": request.task_instruction,
+            "task_payload": request.task_payload,
+            "output_dir": request.output_dir.as_posix(),
+            "mock_mode": request.mock_mode,
+            "model_id": request.model_spec.model_id,
+            "adb_serial": request.emulator_instance.adb_serial,
+        }
+
+    def _format_runtime_failure(
+        self,
+        *,
+        failure_detail: dict[str, object],
+        stderr_path: Path,
+        request: MobileAgentEAndroidWorldRunRequest,
+    ) -> str:
+        error_message = str(failure_detail.get("error_message", "") or "").strip()
+        error_traceback = str(failure_detail.get("traceback", "") or "").strip()
+        combined_detail = "\n".join(part for part in (error_message, error_traceback) if part)
+        lowered = combined_detail.lower()
+        stderr_rel = stderr_path.relative_to(request.output_dir).as_posix()
+        if "mobile_agent_e_runtime_env_error:" in lowered or "missing mobile-agent-e runtime env vars" in lowered:
+            return (
+                "Mobile-Agent-E x AndroidWorld failed before the first model call because the reasoning-model "
+                "configuration env vars are missing. Set either MOBILE_AGENT_E_API_KEY/MOBILE_AGENT_E_BASE_URL "
+                "or PHONE_AGENT_API_KEY/PHONE_AGENT_BASE_URL, then retry. "
+                f"See {stderr_rel}."
+            )
+        if "runtime_import_error:" in lowered:
+            package_hint = self._extract_missing_package_hint(error_message)
+            package_detail = f" Missing package hint: {package_hint}." if package_hint else ""
+            return (
+                "Mobile-Agent-E x AndroidWorld worker startup failed because the configured Python interpreter is "
+                "missing upstream packages. Point ANDROID_WORLD_PYTHON or benchmark.options.python_executable to "
+                "an interpreter with both AndroidWorld and Mobile-Agent-E requirements installed."
+                f"{package_detail} "
+                f"See {stderr_rel}."
+            )
+        if "model_api_error:" in lowered:
+            return (
+                "Mobile-Agent-E x AndroidWorld could not reach the configured model endpoint. "
+                "Check MOBILE_AGENT_E_API_KEY/MOBILE_AGENT_E_BASE_URL, PHONE_AGENT_API_KEY/PHONE_AGENT_BASE_URL, "
+                "and any local proxy or SSL settings. "
+                f"See {stderr_rel} and `raw/mobile_agent_e/failure.json`."
+            )
+        if (
+            "androidworld_app_install_error:" in lowered
+            or "failed to download and install apk" in lowered
+            or "storage.googleapis.com/gresearch/android_world" in lowered
+        ):
+            return (
+                "AndroidWorld task-scoped app setup failed while downloading or installing an APK required by "
+                "the current task. If the emulator was prepared before, retry with the same emulator so the "
+                "already-installed package can be reused; otherwise allow HTTPS access to "
+                "storage.googleapis.com/gresearch/android_world or prewarm the emulator with "
+                "`snowl-mobile benchmark-setup ...` from a network-ready environment. "
+                f"See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+            )
+        if "invalid action json" in lowered or "invalid json for executing action" in lowered:
+            return (
+                "Mobile-Agent-E produced an invalid action JSON during the wrapped AndroidWorld step loop, so the "
+                "upstream runner stopped before executing any action. Check `raw/mobile_agent_e/runner.stdout.txt` "
+                "and the pair artifacts under `raw/mobile_agent_e_androidworld/steps/`. "
+                f"See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+            )
+        if (
+            "list index out of range" in lowered
+            and "get_prompt" in lowered
+            and "agents.py" in lowered
+        ):
+            return (
+                "Mobile-Agent-E upstream prompt construction crashed after a failed first action because its "
+                "Operator prompt builder assumed at least two prior action-history entries existed. This is an "
+                "upstream robustness bug in Mobile-Agent-E rather than an AndroidWorld scorer issue. Retry with "
+                "the updated bridge wrapper, which guards this path without changing the original task logic. "
+                f"See {stderr_rel} and `raw/mobile_agent_e/failure.json`."
+            )
+        if "time data" in lowered and "does not match format" in lowered:
+            return (
+                "AndroidWorld task bootstrap failed while parsing the device time reported by `adb shell date`. "
+                "This can happen when gRPC or adb noise is mixed into the shell output; retry with the updated "
+                "bridge and the same emulator/output directory. "
+                f"See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+            )
+        if "could not get a11y tree" in lowered or "accessibility runtime became unavailable" in lowered:
+            return (
+                "AndroidWorld accessibility runtime became unavailable during task-scoped app setup or task "
+                "bootstrap. The emulator may be unhealthy; restart the AVD and then resume with the same "
+                "output directory. Also verify that the AVD is Android 13 / API 33 as required by the upstream "
+                f"AndroidWorld README. See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+            )
+        if "androidworld_env_error:" in lowered or "grpc" in lowered:
+            if "could not get a11y tree" in lowered or "accessibility tree" in lowered:
+                return (
+                    "AndroidWorld accessibility runtime became unavailable during task-scoped app setup or task "
+                    "bootstrap. The emulator may be unhealthy; restart the AVD and then resume with the same "
+                    "output directory. Also verify that the AVD is Android 13 / API 33 as required by the upstream "
+                    f"AndroidWorld README. See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+                )
+            return (
+                "AndroidWorld could not connect to the emulator runtime. Make sure the AVD is running from the CLI "
+                "with a gRPC port, for example `emulator -avd AndroidWorldAvd -no-snapshot -grpc 8554`. "
+                f"See {stderr_rel}."
+            )
+        if "androidworld_task_error:" in lowered and "task scoring failed after execution" in lowered:
+            return (
+                "AndroidWorld native scoring failed after the agent finished executing the task. This usually means "
+                "the upstream scorer expected app-owned state that was missing or not initialized on the emulator. "
+                "The updated bridge now retries lightweight app initialization before scoring and records a normal "
+                "task failure if the missing-table condition persists. "
+                f"See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+            )
+        if "does not exist" in lowered and "/data/data/" in lowered and (".db" in lowered or "app_db" in lowered):
+            return (
+                "AndroidWorld task bootstrap hit an app-owned SQLite/database initialization problem while "
+                "preparing task-scoped app state. The updated bridge now re-initializes the owning app when the "
+                "database path has not been created yet, and treats a still-missing cleanup DB as empty state "
+                "instead of crashing the trial. "
+                f"See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+            )
+        if (
+            ("target text" in lowered and "not found" in lowered)
+            or "invalid element index" in lowered
+        ):
+            return (
+                "AndroidWorld task bootstrap failed while the benchmark was preparing first-run app state on the "
+                "emulator. This usually comes from flaky onboarding/setup UI during contact or app prepopulation. "
+                "The updated bridge now refreshes the env, re-runs task-scoped app setup, and retries bootstrap "
+                "once before giving up. "
+                f"See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json`."
+            )
+        if "androidworld_task_error:" in lowered:
+            return (
+                "AndroidWorld task bootstrap failed after the emulator came up. Check the task subset, first-run "
+                "setup state, and raw trial artifacts under `raw/mobile_agent_e_androidworld/`. "
+                f"See {stderr_rel}."
+            )
+        if "mobile_agent_e_bridge_error:" in lowered:
+            return (
+                "Mobile-Agent-E bridge execution failed during the wrapped step loop. Check the upstream runner logs "
+                "under `raw/mobile_agent_e/` and the pair artifacts under `raw/mobile_agent_e_androidworld/steps/`. "
+                f"See {stderr_rel}."
+            )
+        return (
+            "Mobile-Agent-E x AndroidWorld bridge execution failed. "
+            f"See {stderr_rel} and `raw/mobile_agent_e_androidworld/failure.json` for details."
+        )

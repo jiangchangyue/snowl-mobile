@@ -1,0 +1,19 @@
+pair_runtime_recipes:
+  - recipe_id: ${bridge_id}
+    agent_id: ${agent_id}
+    benchmark_id: ${benchmark_id}
+    bridge_id: ${bridge_id}
+    requires_bridge: ${requires_pair_recipe_json}
+    worker_mode: container
+    env_isolation: container
+    control_backend: adb_appium
+    reset_policy: snapshot_then_seed
+    backend_requirements: [adb_appium, bridge_runtime]
+    required_env: [TODO_ENV_VAR]
+    env_vars:
+      TODO_BRIDGE_MODE: enabled
+    ports:
+      bridge_port: 51001
+    launch_hints:
+      handshake: TODO_environment_handshake_entry
+      run_entry: TODO_run_entry

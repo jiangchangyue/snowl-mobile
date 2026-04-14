@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+from snowl_mobile.adapters.benchmarks.base import BaseBenchmarkAdapter
+from snowl_mobile.core.benchmark_spec import BenchmarkSpec, MetricSchemaSpec, TaskSourceSpec
+from snowl_mobile.core.enums import IntegrationMode, TaskSourceKind
+from snowl_mobile.core.errors import PhaseStubError
+from snowl_mobile.core.run_context import RunContext
+from snowl_mobile.core.trial_context import TrialContext
+from snowl_mobile.schemas.observation import ObservationBundle
+
+
+class ${class_name}(BaseBenchmarkAdapter):
+    """TODO: fill this adapter after inspecting the real benchmark repo.
+
+    Repo: `${repo_name}`
+    Local path: `${repo_path}`
+    Suggested integration mode: `${integration_mode_lower}`
+    Inspector summary: ${summary_excerpt}
+    """
+
+    @property
+    def adapter_id(self) -> str:
+        return "${adapter_id}"
+
+    def describe(self) -> BenchmarkSpec:
+        return BenchmarkSpec(
+            benchmark_id=self.adapter_id,
+            display_name="${display_name}",
+            integration_mode=IntegrationMode.${integration_mode},
+            task_source=TaskSourceSpec(
+                kind=TaskSourceKind.REFERENCE_REPO,
+                path="${repo_path}",
+                selector="${task_discovery_entry}",
+                manifest="${task_discovery_entry}",
+            ),
+            metric_schema=MetricSchemaSpec(
+                primary_metric="${primary_platform_metric}",
+                native_metrics=("${primary_native_metric}",),
+            ),
+            scorer_ref="${score_capture_entry}",
+            reset_policy="${reset_entry}",
+            reset_requirements={"requires_task_seed": False},
+            device_backend="adb_appium",
+            required_env=${required_env},
+            supported_agent_ids=(),
+        )
+
+    def list_tasks(self, project_ctx: RunContext) -> list[object]:
+        # TODO: implement task discovery from `${task_discovery_entry}`.
+        return []
+
+    def prepare_trial(self, ctx: TrialContext) -> None:
+        # TODO: implement pre-task setup using `${pre_task_setup_entry}` / `${environment_init_entry}`.
+        raise PhaseStubError("Scaffold only: implement benchmark prepare_trial here.")
+
+    def seed_environment(self, ctx: TrialContext) -> None:
+        # TODO: separate benchmark-native seeding from platform reset. Current candidate: `${reset_entry}`.
+        raise PhaseStubError("Scaffold only: implement benchmark seed_environment here.")
+
+    def get_initial_observation(self, ctx: TrialContext) -> ObservationBundle:
+        # TODO: map the upstream `${observation_form}` observation into ObservationBundle.
+        raise PhaseStubError("Scaffold only: implement benchmark observation transform here.")
+
+    def run_entry(self, ctx: TrialContext) -> object:
+        # TODO: connect the main benchmark run path at `${run_entry}`.
+        raise PhaseStubError("Scaffold only: connect the benchmark run entry here.")
+
+    def capture_native_score(self, ctx: TrialContext) -> object:
+        # TODO: capture benchmark-native metrics from `${score_capture_entry}` before adding platform metrics.
+        raise PhaseStubError("Scaffold only: implement native score capture here.")
+
+    def cleanup_trial(self, ctx: TrialContext) -> None:
+        # TODO: implement cleanup using `${cleanup_entry}`.
+        raise PhaseStubError("Scaffold only: implement benchmark cleanup here.")
