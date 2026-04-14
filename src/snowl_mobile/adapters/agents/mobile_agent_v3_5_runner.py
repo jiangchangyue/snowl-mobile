@@ -203,6 +203,31 @@ def _parse_action_with_fallback(
     return parsed, "upstream_parse_action"
 
 
+def _truncate_parse_error_message(message: str, *, limit: int = 240) -> str:
+    normalized = " ".join(str(message).split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3].rstrip() + "..."
+
+
+def _build_parse_error_termination_action(parse_error: Exception) -> tuple[dict[str, Any], str]:
+    parse_error_message = _truncate_parse_error_message(
+        str(parse_error).strip() or type(parse_error).__name__
+    )
+    return (
+        {
+            "_metadata": "synthetic_parse_error",
+            "name": "mobile_use",
+            "arguments": {
+                "action": "terminate",
+                "status": "failure",
+                "text": f"action_parse_error: {parse_error_message}",
+            },
+        },
+        parse_error_message,
+    )
+
+
 def _coordinate_pairs(arguments: dict[str, Any]) -> list[tuple[str, float, float]]:
     pairs: list[tuple[str, float, float]] = []
     for key in ("coordinate", "coordinate1", "coordinate2"):
@@ -984,10 +1009,97 @@ def _run_runner(runner_request_path: Path) -> None:
             },
         )
 
-        parsed_action, action_parse_mode = _parse_action_with_fallback(
-            output_text,
-            parse_action_func=parse_action,
-        )
+        try:
+            parsed_action, action_parse_mode = _parse_action_with_fallback(
+                output_text,
+                parse_action_func=parse_action,
+            )
+        except Exception as parse_error:
+            parsed_action, parse_error_message = _build_parse_error_termination_action(
+                parse_error
+            )
+            action_parse_mode = "synthetic_terminate_on_parse_error"
+            reasoning_text = _extract_reasoning_text(output_text)
+            if reasoning_text:
+                _append_trial_log(
+                    trial_output_dir,
+                    f"Step {step_index} thought: {reasoning_text}",
+                )
+            parse_error_note = (
+                "Failed to parse Mobile-Agent-v3.5 model output into a tool call. "
+                "The raw output was preserved and the runner terminated this task gracefully. "
+                f"{parse_error_message}"
+            )
+            _append_trial_log(
+                trial_output_dir,
+                f"Step {step_index} parse failure: {parse_error_note}",
+                level="WARNING",
+            )
+            _stream_platform_step_artifacts(
+                trial_output_dir=trial_output_dir,
+                step_index=step_index,
+                screenshot_path=model_input_screenshot_path,
+                xml_path=model_input_xml_path,
+            )
+            duration_ms = max(1, int((time.monotonic() - step_started) * 1000))
+            step_record = {
+                "step_index": step_index,
+                "observed_at": _utcnow(),
+                "finished_at": _utcnow(),
+                "duration_ms": duration_ms,
+                "screenshot_path": str(model_input_screenshot_path),
+                "annotated_screenshot_path": "",
+                "xml_path": str(model_input_xml_path),
+                "model_input_screenshot_path": str(model_input_screenshot_path),
+                "model_input_xml_path": str(model_input_xml_path),
+                "messages_path": str(messages_path),
+                "model_response_text_path": str(raw_text_path),
+                "model_response_json_path": str(raw_json_path),
+                "raw_output": output_text,
+                "reasoning_text": reasoning_text,
+                "parsed_action": parsed_action,
+                "action_parse_mode": action_parse_mode,
+                "executed_arguments": dict(parsed_action.get("arguments", {})),
+                "coordinate_space": "",
+                "action_status": {
+                    "ok": False,
+                    "finished": True,
+                    "finish_flag": "parse_error",
+                    "message": parse_error_note,
+                    "action_type": "terminate",
+                    "parse_error": parse_error_message,
+                },
+                "finish_flag": "parse_error",
+                "post_action_settle_sec": 0.0,
+                "action_override_kind": "parse_error",
+                "action_override_note": parse_error_message,
+                "effective_raw_arguments": dict(parsed_action.get("arguments", {})),
+                "observation_text": (
+                    f"foreground_app={current_package_name} foreground_activity={current_activity}".strip()
+                    if current_package_name or current_activity
+                    else initial_observation_text
+                ),
+                "package_name": current_package_name,
+                "activity": current_activity,
+                "time_to_first_token_ms": 0,
+            }
+            _write_json(
+                raw_json_path,
+                {
+                    "raw_output": output_text,
+                    "parsed_action": parsed_action,
+                    "action_parse_mode": action_parse_mode,
+                    "parse_error": parse_error_message,
+                    "step": step_record,
+                    "messages": messages,
+                },
+            )
+            steps.append(step_record)
+            _write_json(steps_json_path, steps)
+            failed_actions += 1
+            finished = True
+            finish_flag = "parse_error"
+            break
         _write_json(
             raw_json_path,
             {

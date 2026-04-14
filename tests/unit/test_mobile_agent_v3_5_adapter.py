@@ -164,6 +164,173 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
             {"action": "type", "text": "Cool. I wanna visit there, too."},
         )
 
+    def test_runner_builds_graceful_terminate_action_for_parse_error(self) -> None:
+        parsed_action, parse_error_message = runner_module._build_parse_error_termination_action(
+            ValueError("Failed to parse action from model output: list index out of range")
+        )
+
+        self.assertEqual(parsed_action["_metadata"], "synthetic_parse_error")
+        self.assertEqual(parsed_action["name"], "mobile_use")
+        self.assertEqual(parsed_action["arguments"]["action"], "terminate")
+        self.assertEqual(parsed_action["arguments"]["status"], "failure")
+        self.assertIn("action_parse_error:", parsed_action["arguments"]["text"])
+        self.assertIn("list index out of range", parse_error_message)
+
+    def test_runner_converts_parse_failure_into_terminal_step_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            repo_path = root / "repo"
+            mobile_use_dir = repo_path / "mobile_use"
+            mobile_use_dir.mkdir(parents=True, exist_ok=True)
+
+            output_dir = root / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            work_dir = output_dir / "raw" / "mobile_agent_v3_5" / "workdir"
+            work_dir.mkdir(parents=True, exist_ok=True)
+
+            runner_request_path = output_dir / "raw" / "mobile_agent_v3_5" / "runner_request.json"
+            runner_request_path.parent.mkdir(parents=True, exist_ok=True)
+            result_path = output_dir / "raw" / "mobile_agent_v3_5" / "runner_result.json"
+            failure_path = output_dir / "raw" / "mobile_agent_v3_5" / "failure.json"
+            steps_json_path = output_dir / "raw" / "mobile_agent_v3_5" / "steps.json"
+
+            runner_request_path.write_text(
+                json.dumps(
+                    {
+                        "request": {
+                            "repo_path": str(repo_path),
+                            "output_dir": str(output_dir),
+                            "model_id": "Qwen2.5-VL-72B-Instruct",
+                            "task_instruction": "Forward the most recent message to John.",
+                            "observation": {
+                                "parsed_text": "Messages app visible.",
+                            },
+                            "adb_serial": "emulator-5554",
+                            "max_steps": 2,
+                            "capture_xml_via_adb": False,
+                            "task_payload": {
+                                "task_category": "text_message_forwarding",
+                                "risk_level": "high_risk",
+                            },
+                        },
+                        "result_path": str(result_path),
+                        "failure_path": str(failure_path),
+                        "steps_json_path": str(steps_json_path),
+                        "work_dir": str(work_dir),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+
+            class DummyAdbTools:
+                def __init__(self, *, adb_path: str, device: str | None = None) -> None:
+                    self.adb_path = adb_path
+                    self.device = device
+
+                @staticmethod
+                def get_screenshot(image_path: str) -> bool:
+                    Path(image_path).write_bytes(b"png")
+                    return True
+
+            class DummyGUIOwlWrapper:
+                def __init__(self, api_key: str, base_url: str, model: str) -> None:
+                    self.api_key = api_key
+                    self.base_url = base_url
+                    self.model = model
+
+                @staticmethod
+                def predict_mm(messages: object) -> tuple[str, object, object]:
+                    del messages
+                    return (
+                        "I should not forward a verification code to anyone.",
+                        [],
+                        {},
+                    )
+
+            class DummyImage:
+                height = 2400
+                width = 1080
+
+            dummy_run_gui_module = SimpleNamespace(
+                parse_action=lambda _text: (_ for _ in ()).throw(
+                    ValueError("Failed to parse action from model output: list index out of range")
+                ),
+                rescale_coordinates=lambda payload, _w, _h: payload,
+            )
+            dummy_packages_module = SimpleNamespace(
+                NAME_PACKAGE_DICT={},
+                PACKAGES_NAME_DICT={},
+            )
+            dummy_utils_module = SimpleNamespace(
+                AdbTools=DummyAdbTools,
+                GUIOwlWrapper=DummyGUIOwlWrapper,
+                annotate_screenshot=lambda *_args, **_kwargs: False,
+                build_messages=lambda *_args, **_kwargs: [],
+                resolve_app_name_via_llm=lambda *_args, **_kwargs: None,
+                smart_resize=lambda height, width, **_kwargs: (height, width),
+                image_to_base64=lambda image_path: image_path,
+            )
+
+            original_import_module = runner_module.importlib.import_module
+
+            def fake_import_module(name: str):
+                if name == "run_gui_owl_1_5_for_mobile":
+                    return dummy_run_gui_module
+                if name == "packages":
+                    return dummy_packages_module
+                if name == "utils":
+                    return dummy_utils_module
+                if name == "PIL.Image":
+                    return SimpleNamespace(open=lambda _path: DummyImage())
+                return original_import_module(name)
+
+            with patch.object(
+                runner_module.importlib,
+                "import_module",
+                side_effect=fake_import_module,
+            ), patch.object(
+                runner_module,
+                "_install_qwen_vl_utils_shim_if_needed",
+            ), patch.object(
+                runner_module,
+                "_install_mobile_use_path_shims",
+            ), patch.object(
+                runner_module,
+                "_probe_foreground_app",
+                return_value=("com.google.android.apps.messaging", ".Main"),
+            ), patch.dict(
+                os.environ,
+                {
+                    "MOBILE_AGENT_V3_5_API_KEY": "token",
+                    "MOBILE_AGENT_V3_5_BASE_URL": "https://example.invalid/v1",
+                    "MOBILE_AGENT_V3_5_MODEL": "Qwen2.5-VL-72B-Instruct",
+                    "MOBILE_AGENT_V3_5_ADB_PATH": "/usr/bin/adb",
+                },
+                clear=False,
+            ):
+                runner_module._run_runner(runner_request_path)
+
+            runner_result = json.loads(result_path.read_text(encoding="utf-8"))
+            steps_payload = json.loads(steps_json_path.read_text(encoding="utf-8"))
+
+            self.assertTrue(runner_result["finished"])
+            self.assertEqual(runner_result["finish_flag"], "parse_error")
+            self.assertEqual(runner_result["failed_actions"], 1)
+            self.assertEqual(len(steps_payload), 1)
+            self.assertEqual(
+                steps_payload[0]["action_parse_mode"],
+                "synthetic_terminate_on_parse_error",
+            )
+            self.assertEqual(steps_payload[0]["parsed_action"]["arguments"]["action"], "terminate")
+            self.assertEqual(steps_payload[0]["parsed_action"]["arguments"]["status"], "failure")
+            self.assertEqual(steps_payload[0]["finish_flag"], "parse_error")
+            self.assertFalse(steps_payload[0]["action_status"]["ok"])
+            self.assertTrue(steps_payload[0]["action_status"]["finished"])
+            self.assertEqual(steps_payload[0]["action_status"]["action_type"], "terminate")
+            self.assertIn("Failed to parse Mobile-Agent-v3.5 model output", steps_payload[0]["action_status"]["message"])
+
     def test_runner_treats_large_coordinates_as_absolute_pixels(self) -> None:
         executed, coordinate_space = runner_module._materialize_executed_arguments(
             {"action": "swipe", "coordinate": [539, 1875], "coordinate2": [539, 746]},
