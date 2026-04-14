@@ -1,13 +1,49 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Callable, Sequence
 
 from snowl_mobile.core.errors import IntegrationError
 
 
+_PROJECT_ROOT_ENV_VAR = "SNOWL_MOBILE_PROJECT_ROOT"
+
+
+def _looks_like_repository_root(candidate: Path) -> bool:
+    return (
+        (candidate / "pyproject.toml").is_file()
+        and (candidate / "src" / "snowl_mobile").is_dir()
+        and (candidate / "references").is_dir()
+    )
+
+
+def _discover_repository_root(start: Path) -> Path | None:
+    current = start.expanduser().resolve()
+    if current.is_file():
+        current = current.parent
+    for candidate in (current, *current.parents):
+        if _looks_like_repository_root(candidate):
+            return candidate
+    return None
+
+
 def repository_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    env_root = os.environ.get(_PROJECT_ROOT_ENV_VAR, "").strip()
+    if env_root:
+        resolved_env_root = _discover_repository_root(Path(env_root))
+        if resolved_env_root is not None:
+            return resolved_env_root
+
+    # Prefer the caller's current workspace so an installed console script can
+    # still use the references/ tree in the project the user is actively
+    # working in.
+    resolved_cwd_root = _discover_repository_root(Path.cwd())
+    if resolved_cwd_root is not None:
+        return resolved_cwd_root
+
+    package_root = Path(__file__).resolve().parents[3]
+    return _discover_repository_root(package_root) or package_root
 
 
 def normalize_reference_candidate(candidate: Path, *, repo_root: Path | None = None) -> Path:
