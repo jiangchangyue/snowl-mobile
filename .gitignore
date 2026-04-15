@@ -21,5 +21,6 @@ tmp/
 Qwen2.5-vl-72B/
 results/
 docs/snowl-mobile_项目设计说明书_v0.1.docx
+mobile-agent-eval-ui/server/.bridge-state/
 
 **/tmp.git-*
