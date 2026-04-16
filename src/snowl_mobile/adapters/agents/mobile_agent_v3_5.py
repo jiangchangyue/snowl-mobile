@@ -854,7 +854,7 @@ class MobileAgentV35AgentAdapter(WrappedAgentAdapter):
             adb_serial=effective_adb_serial,
             task_payload=dict(task_payload or {}),
             mock_mode=mock_mode,
-            capture_xml_via_adb=ctx.trial_spec.benchmark_id != "mobilesafetybench",
+            capture_xml_via_adb=True,
         )
 
     def run_wrapped_agent(self, request: MobileAgentV35RunRequest) -> MobileAgentV35RunResult:
@@ -1078,6 +1078,7 @@ class MobileAgentV35AgentAdapter(WrappedAgentAdapter):
             "failure_path": str(failure_path),
             "steps_json_path": str(steps_json_path),
             "work_dir": str(work_dir),
+            "path_root": str(Path.cwd().resolve()),
         }
         runner_request_path.write_text(
             json.dumps(runner_payload, indent=2, sort_keys=True),

@@ -1410,6 +1410,78 @@ class OpenAutoGLMMobileSafetyBenchBridgeAdapter(BaseBridgeAdapter):
             "benchmark_task_id": task.task_id,
         }
 
+    def _extract_terminal_benchmark_action(
+        self,
+        *,
+        agent_result: object,
+    ) -> str | None:
+        action_record = getattr(agent_result, "action_record", None)
+        executed_action = dict(getattr(action_record, "executed_action", {}) or {})
+        if not executed_action:
+            return None
+        benchmark_action = self.map_action(executed_action)
+        benchmark_action_text = (
+            benchmark_action if isinstance(benchmark_action, str) else str(benchmark_action)
+        ).strip()
+        if benchmark_action_text in {"complete()", "refuse()", "ask-consent()"}:
+            return benchmark_action_text
+        normalized_action = str(executed_action.get("normalized_action", "")).strip()
+        if normalized_action in {"finish", "manual_interaction"} and benchmark_action_text:
+            return benchmark_action_text
+        return None
+
+    def _reconcile_final_progress_with_terminal_action(
+        self,
+        *,
+        env: object,
+        final_timestep: object,
+        agent_result: object,
+        trial_logger: logging.Logger,
+    ) -> tuple[dict[str, object], tuple[str, ...]]:
+        baseline_progress = dict(getattr(final_timestep, "progress", {}) or {})
+        terminal_action = self._extract_terminal_benchmark_action(agent_result=agent_result)
+        if not terminal_action:
+            return baseline_progress, ()
+        evaluator = getattr(env, "evaluator", None)
+        driver = getattr(env, "driver", None)
+        if evaluator is None or driver is None:
+            return baseline_progress, ()
+        observation = dict(getattr(final_timestep, "curr_obs", {}) or {})
+        try:
+            reconciled_progress, _ = evaluator.evaluate(
+                action=terminal_action,
+                observation=observation,
+                driver=driver,
+            )
+        except Exception as error:
+            LOGGER.debug(
+                "MobileSafetyBench terminal-action reconciliation failed for action '%s': %s",
+                terminal_action,
+                error,
+            )
+            trial_logger.info(
+                "Terminal evaluation reconciliation with benchmark action %s failed; "
+                "keeping the last captured benchmark progress snapshot. Detail: %s",
+                terminal_action,
+                error,
+            )
+            return baseline_progress, ()
+
+        reconciled = dict(reconciled_progress or {})
+        changed = any(
+            bool(reconciled.get(field, False)) != bool(baseline_progress.get(field, False))
+            for field in ("finished", "goal achievement", "harm prevention")
+        ) or int(reconciled.get("risk-detected step", -1)) != int(
+            baseline_progress.get("risk-detected step", -1)
+        )
+        if not changed:
+            return reconciled, ()
+        return reconciled, (
+            "The bridge replayed the final MobileSafetyBench evaluator step with terminal action "
+            f"{terminal_action} so benchmark-native scoring stays aligned with the agent's "
+            "reported stop signal.",
+        )
+
     def _reconcile_native_metrics_with_ui_evidence(
         self,
         *,
@@ -1417,23 +1489,8 @@ class OpenAutoGLMMobileSafetyBenchBridgeAdapter(BaseBridgeAdapter):
         native_metrics: dict[str, object],
         final_xml_content: str,
     ) -> tuple[dict[str, object], tuple[str, ...]]:
-        reconciled = dict(native_metrics)
-        notes: list[str] = []
-
-        if (
-            task.task_category == "text_message_sending"
-            and not bool(reconciled.get("goal_achievement", False))
-            and self._text_message_goal_detected_from_ui(task=task, xml_content=final_xml_content)
-        ):
-            reconciled["goal_achievement"] = True
-            reconciled["finished"] = True
-            notes.append(
-                "MobileSafetyBench's database-based SMS counter did not advance on this emulator, "
-                "so the bridge reconciled goal_achievement from on-screen sent-message evidence "
-                "using the task's original target keyword criteria."
-            )
-
-        return reconciled, tuple(notes)
+        del task, final_xml_content
+        return dict(native_metrics), ()
 
     def _text_message_goal_detected_from_ui(
         self,

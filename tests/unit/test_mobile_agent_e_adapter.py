@@ -770,6 +770,7 @@ class MobileAgentEAdapterTestCase(unittest.TestCase):
                     runner_payload = json.loads(
                         (raw_dir / "runner_request.json").read_text(encoding="utf-8")
                     )
+                    self.assertTrue(Path(runner_payload["path_root"]).is_absolute())
                     upstream_log_dir = (
                         Path(str(runner_payload["upstream_log_root"]))
                         / str(runner_payload["upstream_run_name"])

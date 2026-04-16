@@ -1289,6 +1289,7 @@ class MobileAgentEAgentAdapter(WrappedAgentAdapter):
             "upstream_log_root": str(raw_dir / "upstream_logs"),
             "upstream_run_name": "platform_run",
             "upstream_task_id": request.output_dir.name,
+            "path_root": str(Path.cwd().resolve()),
         }
         runner_request_path.write_text(
             json.dumps(runner_payload, indent=2, sort_keys=True),

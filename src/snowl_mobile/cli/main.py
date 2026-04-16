@@ -49,6 +49,7 @@ from snowl_mobile.integration.scaffold_generator import (
 )
 from snowl_mobile.runtime.trial_orchestrator import TrialOrchestrator
 from snowl_mobile.schedulers.retry_controller import RetryController
+from snowl_mobile.scoring.run_eval_results import build_run_eval_results
 
 
 LOGGER = logging.getLogger(__name__)
@@ -825,6 +826,40 @@ def _build_run_summary_payload(
     }
 
 
+def _write_run_eval_results(
+    *,
+    store: ArtifactStore,
+    layout: object,
+    run_id: str,
+    planned_trials: int,
+    trial_entries: tuple[object, ...],
+) -> None:
+    default_agent_id = ""
+    default_benchmark_id = ""
+    if trial_entries:
+        first_trial = trial_entries[0].trial
+        default_agent_id = str(getattr(first_trial, "agent_id", "") or "")
+        default_benchmark_id = str(getattr(first_trial, "benchmark_id", "") or "")
+    try:
+        payload = build_run_eval_results(
+            Path(layout.run_dir),
+            run_id=run_id,
+            planned_trials=planned_trials,
+            default_agent_id=default_agent_id,
+            default_benchmark_id=default_benchmark_id,
+            updated_at=_utcnow(),
+        )
+    except Exception as error:  # pragma: no cover - defensive logging path
+        LOGGER.warning(
+            "Failed to refresh eval_results.json for run '%s' under %s: %s",
+            run_id,
+            layout.run_dir,
+            error,
+        )
+        return
+    store.write_eval_results(layout, payload)
+
+
 def _build_pending_plan(full_plan: object, *, spec: object, run_dir: Path, pending_entries: tuple[object, ...]) -> object:
     pending_context = RunContext(
         run_id=full_plan.run_id,
@@ -1016,6 +1051,13 @@ def _handle_run(args: argparse.Namespace) -> int:
             plan_payload=full_plan.to_summary(),
             summary_payload=placeholder_summary,
         )
+        _write_run_eval_results(
+            store=store,
+            layout=layout,
+            run_id=run_id,
+            planned_trials=full_plan.run_context.planned_trials,
+            trial_entries=tuple(full_plan.planned_trials),
+        )
     if spec.artifacts.persist_logs:
         configure_logging(args.verbose, log_file=layout.run_log_path)
     store.write_project_snapshot(layout, config_path)
@@ -1087,6 +1129,13 @@ def _handle_run(args: argparse.Namespace) -> int:
             ],
         )
         store.write_summary(layout, progress_summary)
+        _write_run_eval_results(
+            store=store,
+            layout=layout,
+            run_id=run_id,
+            planned_trials=full_plan.run_context.planned_trials,
+            trial_entries=tuple(full_plan.planned_trials),
+        )
         store.write_manifest(
             layout,
             store.build_manifest_payload(
@@ -1116,6 +1165,13 @@ def _handle_run(args: argparse.Namespace) -> int:
             ],
         )
         store.write_summary(layout, final_summary)
+        _write_run_eval_results(
+            store=store,
+            layout=layout,
+            run_id=run_id,
+            planned_trials=full_plan.run_context.planned_trials,
+            trial_entries=tuple(full_plan.planned_trials),
+        )
         store.write_manifest(
             layout,
             store.build_manifest_payload(
@@ -1177,6 +1233,13 @@ def _handle_run(args: argparse.Namespace) -> int:
             ],
         )
         store.write_summary(layout, progress_summary)
+        _write_run_eval_results(
+            store=store,
+            layout=layout,
+            run_id=run_id,
+            planned_trials=full_plan.run_context.planned_trials,
+            trial_entries=tuple(full_plan.planned_trials),
+        )
         store.write_manifest(
             layout,
             store.build_manifest_payload(
@@ -1279,6 +1342,13 @@ def _handle_run(args: argparse.Namespace) -> int:
     )
     store.write_plan(layout, full_plan.to_summary())
     store.write_summary(layout, final_summary)
+    _write_run_eval_results(
+        store=store,
+        layout=layout,
+        run_id=run_id,
+        planned_trials=full_plan.run_context.planned_trials,
+        trial_entries=tuple(full_plan.planned_trials),
+    )
     store.write_manifest(
         layout,
         store.build_manifest_payload(

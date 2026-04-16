@@ -289,7 +289,7 @@ def smart_resize(height, width, factor=16, min_pixels=None, max_pixels=None):
 # ---------------------------------------------------------------------------
 # VLM message construction
 # ---------------------------------------------------------------------------
-
+# * The screen's resolution is 1000x1000.
 SYSTEM_PROMPT = '''# Tools
 
 You may call one or more functions to assist with the user query.
@@ -299,7 +299,7 @@ You are provided with function signatures within <tools></tools> XML tags:
 {"type": "function", "function": {"name_for_human": "mobile_use", "name": "mobile_use", "description": "Use a touchscreen to interact with a mobile device, and take screenshots.
 * This is an interface to a mobile device with touchscreen. You can perform actions like clicking, typing, swiping, etc.
 * Some applications may take time to start or process actions, so you may need to wait and take successive screenshots to see the results of your actions.
-* The screen's resolution is 1000x1000.
+
 * Make sure to click any buttons, links, icons, etc with the cursor tip in the center of the element. Don't click boxes on their edges unless asked.", "parameters": {"properties": {"action": {"description": "The action to perform. The available actions are:
 * `key`: Perform a key event on the mobile device.
     - This supports adb's `keyevent` syntax.
