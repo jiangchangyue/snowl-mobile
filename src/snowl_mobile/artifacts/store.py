@@ -517,6 +517,9 @@ class ArtifactStore:
     def write_summary(self, layout: RunLayout, payload: dict[str, Any]) -> None:
         self._write_json(layout.summary_path, payload)
 
+    def write_eval_results(self, layout: RunLayout, payload: dict[str, Any]) -> None:
+        self._write_json(layout.run_dir / "eval_results.json", payload)
+
     def append_event(self, layout: RunLayout, event: dict[str, Any]) -> None:
         EventBus(layout.events_path).write_event(event)
 

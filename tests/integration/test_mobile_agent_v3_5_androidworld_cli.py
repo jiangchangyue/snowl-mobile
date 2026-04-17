@@ -83,6 +83,10 @@ class MobileAgentV35AndroidWorldCLITestCase(unittest.TestCase):
             self.assertEqual(summary["counts"]["planned_trials"], 1)
             self.assertEqual(summary["counts"]["completed"], 1)
             self.assertEqual(summary["counts"]["failed"], 0)
+            eval_results = json.loads((run_dir / "eval_results.json").read_text(encoding="utf-8"))
+            self.assertEqual(eval_results["planned_trials"], 1)
+            self.assertEqual(eval_results["evaluated_trials"], 1)
+            self.assertIn("task_success_rate", eval_results["metrics"])
 
             trial_dirs = sorted((run_dir / "trials").iterdir())
             self.assertEqual(len(trial_dirs), 1)

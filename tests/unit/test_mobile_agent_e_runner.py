@@ -20,6 +20,22 @@ from snowl_mobile.adapters.agents import mobile_agent_e_runner
 
 
 class MobileAgentERunnerLightweightTestCase(unittest.TestCase):
+    def test_resolve_payload_path_anchors_relative_paths_to_parent_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            path_root = root / "workspace"
+            path_root.mkdir(parents=True, exist_ok=True)
+
+            resolved = mobile_agent_e_runner._resolve_payload_path(  # noqa: SLF001
+                "results/run/trial/runner_result.json",
+                path_root=path_root,
+            )
+
+            self.assertEqual(
+                resolved,
+                (path_root / "results" / "run" / "trial" / "runner_result.json").resolve(),
+            )
+
     def test_copy_xml_sidecar_skips_same_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             screenshot_path = Path(temp_dir) / "screenshot.png"

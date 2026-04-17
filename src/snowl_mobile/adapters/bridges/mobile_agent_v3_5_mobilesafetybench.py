@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import threading
 import time
 import traceback
 from dataclasses import dataclass
@@ -313,6 +314,8 @@ class MobileAgentV35MobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchB
             trial_logger=trial_logger
         ), self._patched_mobilesafetybench_appium_helpers(trial_logger=trial_logger):
             env: object | None = None
+            live_observation_stop_event: threading.Event | None = None
+            live_observation_thread: threading.Thread | None = None
             started_at = time.monotonic()
             environment_console_path = bridge_raw_dir / "environment_init.console.txt"
             try:
@@ -394,6 +397,21 @@ class MobileAgentV35MobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchB
                     runtime_env.get("MOBILE_AGENT_V3_5_MODEL", request.model_spec.model_id),
                     runtime_env.get("MOBILE_AGENT_V3_5_BASE_URL", ""),
                 )
+                (
+                    bootstrap_observation,
+                    live_observation_stop_event,
+                    live_observation_thread,
+                ) = self._start_live_observation_sidecar(
+                    env=env,
+                    task=task,
+                    output_dir=request.output_dir,
+                    bridge_raw_dir=bridge_raw_dir,
+                    trial_logger=trial_logger,
+                    adb_serial=request.emulator_instance.adb_serial,
+                    bootstrap_observation=bootstrap_observation,
+                    bootstrap_xml_content=bootstrap_xml_content,
+                    bootstrap_pixel_array=bootstrap_pixel_array,
+                )
                 agent_request = agent_adapter.build_run_request(
                     ctx,
                     output_dir=request.output_dir,
@@ -411,6 +429,10 @@ class MobileAgentV35MobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchB
                         "Mobile-Agent-v3.5 runtime invocation failed inside the pair bridge. "
                         f"Original error: {type(error).__name__}: {error}"
                     ) from error
+                if live_observation_stop_event is not None:
+                    live_observation_stop_event.set()
+                if live_observation_thread is not None:
+                    live_observation_thread.join(timeout=3.0)
                 try:
                     env.prev_act = "no-op()"
                     final_timestep = self._get_state_with_existing_device_recovery(
@@ -437,11 +459,22 @@ class MobileAgentV35MobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchB
                     pixel_array=final_pixel_array,
                     stem="final",
                 )
+                final_progress, terminal_reconciliation_notes = (
+                    self._reconcile_final_progress_with_terminal_action(
+                        env=env,
+                        final_timestep=final_timestep,
+                        agent_result=agent_result,
+                        trial_logger=trial_logger,
+                    )
+                )
                 native_metrics, evaluation_notes = self._build_bridge_native_metrics(
                     task=task,
-                    final_progress=dict(getattr(final_timestep, "progress", {}) or {}),
+                    final_progress=final_progress,
                     final_xml_content=final_xml_content,
                     agent_result=agent_result,
+                )
+                evaluation_notes = tuple(
+                    dict.fromkeys([*terminal_reconciliation_notes, *evaluation_notes])
                 )
                 LOGGER.info(
                     "Trial '%s' starting evaluation with final benchmark progress snapshot",
@@ -451,6 +484,13 @@ class MobileAgentV35MobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchB
                     task=task,
                     native_metrics=native_metrics,
                 )
+                if evaluation_notes:
+                    score_bundle = ScoreBundle(
+                        native_metrics=score_bundle.native_metrics,
+                        primary_metric=score_bundle.primary_metric,
+                        platform_metrics=score_bundle.platform_metrics,
+                        notes=[*score_bundle.notes, *evaluation_notes],
+                    )
                 total_duration_ms = max(1, int((time.monotonic() - started_at) * 1000))
                 filtered_agent_notes = tuple(
                     note
@@ -568,6 +608,10 @@ class MobileAgentV35MobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchB
                     f"See {failure_path} for traceback and bridge diagnostics."
                 ) from error
             finally:
+                if live_observation_stop_event is not None:
+                    live_observation_stop_event.set()
+                if live_observation_thread is not None and live_observation_thread.is_alive():
+                    live_observation_thread.join(timeout=1.0)
                 if env is not None:
                     self._cleanup_existing_device_environment(env)
 
@@ -729,6 +773,173 @@ class MobileAgentV35MobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchB
             "runtime_recipe": request.trial_context.trial_spec.runtime_recipe.to_dict(),
             "task_payload": request.task_payload,
         }
+
+    def _with_live_observation_paths(
+        self,
+        *,
+        observation: ObservationBundle,
+        output_dir: Path,
+        live_xml_path: Path,
+        live_screenshot_path: Path,
+        live_observation_path: Path,
+    ) -> ObservationBundle:
+        extra = {
+            **dict(observation.extra),
+            "bridge_live_xml_path": str(live_xml_path.relative_to(output_dir)),
+            "bridge_live_screenshot_path": str(live_screenshot_path.relative_to(output_dir)),
+            "bridge_live_observation_path": str(live_observation_path.relative_to(output_dir)),
+            "bridge_live_observation_source": "mobilesafetybench_curr_obs_sidecar",
+        }
+        return ObservationBundle(
+            timestamp=observation.timestamp,
+            screenshot_path=observation.screenshot_path,
+            xml_path=observation.xml_path,
+            ui_tree_json_path=observation.ui_tree_json_path,
+            parsed_text=observation.parsed_text,
+            activity=observation.activity,
+            package_name=observation.package_name,
+            screen_size=observation.screen_size,
+            orientation=observation.orientation,
+            source_backend=observation.source_backend,
+            extra=extra,
+        )
+
+    def _write_live_observation_snapshot(
+        self,
+        *,
+        xml_path: Path,
+        screenshot_path: Path,
+        observation_path: Path,
+        observation: ObservationBundle,
+        xml_content: str,
+        pixel_array: object,
+        sequence: int,
+    ) -> None:
+        xml_path.parent.mkdir(parents=True, exist_ok=True)
+        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+        observation_path.parent.mkdir(parents=True, exist_ok=True)
+
+        xml_tmp_path = xml_path.with_suffix(xml_path.suffix + ".tmp")
+        xml_tmp_path.write_text(
+            xml_content if xml_content else "<hierarchy></hierarchy>\n",
+            encoding="utf-8",
+        )
+        xml_tmp_path.replace(xml_path)
+
+        if screenshot_path.suffix:
+            screenshot_tmp_path = screenshot_path.with_name(
+                f"{screenshot_path.stem}.tmp{screenshot_path.suffix}"
+            )
+        else:
+            screenshot_tmp_path = screenshot_path.with_name(f"{screenshot_path.name}.tmp")
+        self._write_png_from_observation_extra(screenshot_tmp_path, pixel_array)
+        screenshot_tmp_path.replace(screenshot_path)
+
+        observation_tmp_path = observation_path.with_suffix(observation_path.suffix + ".tmp")
+        observation_tmp_path.write_text(
+            json.dumps(
+                {
+                    "updated_at": observation.timestamp,
+                    "sequence": sequence,
+                    "screenshot_path": str(screenshot_path),
+                    "xml_path": str(xml_path),
+                    "package_name": observation.package_name,
+                    "screen_size": observation.screen_size,
+                    "parsed_text": observation.parsed_text,
+                    "source_backend": observation.source_backend,
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        observation_tmp_path.replace(observation_path)
+
+    def _start_live_observation_sidecar(
+        self,
+        *,
+        env: object,
+        task: object,
+        output_dir: Path,
+        bridge_raw_dir: Path,
+        trial_logger: logging.Logger,
+        adb_serial: str,
+        bootstrap_observation: ObservationBundle,
+        bootstrap_xml_content: str,
+        bootstrap_pixel_array: object,
+    ) -> tuple[ObservationBundle, threading.Event, threading.Thread]:
+        live_observation_dir = bridge_raw_dir / "live_observation"
+        live_xml_path = live_observation_dir / "latest.xml"
+        live_screenshot_path = live_observation_dir / "latest.png"
+        live_observation_path = live_observation_dir / "latest_observation.json"
+        self._write_live_observation_snapshot(
+            xml_path=live_xml_path,
+            screenshot_path=live_screenshot_path,
+            observation_path=live_observation_path,
+            observation=bootstrap_observation,
+            xml_content=bootstrap_xml_content,
+            pixel_array=bootstrap_pixel_array,
+            sequence=0,
+        )
+        updated_bootstrap = self._with_live_observation_paths(
+            observation=bootstrap_observation,
+            output_dir=output_dir,
+            live_xml_path=live_xml_path,
+            live_screenshot_path=live_screenshot_path,
+            live_observation_path=live_observation_path,
+        )
+        trial_logger.info(
+            "Started live observation sidecar for Mobile-Agent-v3.5: xml=%s screenshot=%s",
+            live_xml_path,
+            live_screenshot_path,
+        )
+        stop_event = threading.Event()
+
+        def _sidecar_loop() -> None:
+            sequence = 1
+            failure_count = 0
+            while not stop_event.is_set():
+                try:
+                    timestep = self._get_state_with_existing_device_recovery(
+                        env=env,
+                        adb_serial=adb_serial,
+                        trial_logger=trial_logger,
+                        state_label="Live observation sidecar refresh",
+                    )
+                    observation, xml_content, pixel_array = self._build_real_observation(
+                        env=env,
+                        timestep=timestep,
+                        task=task,
+                        benchmark_action="live-observation-sidecar",
+                    )
+                    observation = self.map_observation(observation)
+                    self._write_live_observation_snapshot(
+                        xml_path=live_xml_path,
+                        screenshot_path=live_screenshot_path,
+                        observation_path=live_observation_path,
+                        observation=observation,
+                        xml_content=xml_content,
+                        pixel_array=pixel_array,
+                        sequence=sequence,
+                    )
+                    sequence += 1
+                    failure_count = 0
+                except Exception as error:
+                    failure_count += 1
+                    if failure_count in {1, 5}:
+                        trial_logger.warning(
+                            "Live observation sidecar refresh failed and will retry. Detail: %s",
+                            error,
+                        )
+                stop_event.wait(0.35)
+
+        thread = threading.Thread(
+            target=_sidecar_loop,
+            name=f"msb-live-observation-{adb_serial}",
+            daemon=True,
+        )
+        thread.start()
+        return updated_bootstrap, stop_event, thread
 
     def _validate_real_env(self, request: MobileAgentV35MobileSafetyBenchRunRequest) -> None:
         if not os.environ.get("APPIUM_BIN", "").strip():

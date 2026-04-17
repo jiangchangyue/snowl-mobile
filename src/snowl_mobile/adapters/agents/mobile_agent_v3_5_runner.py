@@ -391,17 +391,63 @@ def _capture_observation(
     screenshot_path: Path,
     xml_path: Path,
     capture_xml_via_adb: bool,
-) -> None:
+    live_xml_path: Path | None = None,
+    fallback_xml_paths: tuple[Path, ...] = (),
+) -> dict[str, object]:
     _capture_validated_screenshot(
         adb_tools=adb_tools,
         adb_serial=adb_serial,
         screenshot_path=screenshot_path,
     )
     if not capture_xml_via_adb:
-        xml_path.parent.mkdir(parents=True, exist_ok=True)
-        xml_path.write_text("<hierarchy></hierarchy>\n", encoding="utf-8")
-        return
-    _dump_ui_hierarchy_xml(adb_path=adb_path, adb_serial=adb_serial, xml_path=xml_path)
+        _write_empty_hierarchy_xml(xml_path)
+        return {
+            "xml_capture_mode": "disabled",
+            "xml_capture_diagnostics": "",
+            "xml_fallback_source": "",
+            "xml_meaningful": False,
+            "xml_trusted_for_execution": False,
+        }
+    if live_xml_path is not None and _copy_meaningful_xml(live_xml_path, xml_path):
+        return {
+            "xml_capture_mode": "bridge_live_observation",
+            "xml_capture_diagnostics": "",
+            "xml_fallback_source": str(live_xml_path),
+            "xml_meaningful": True,
+            "xml_trusted_for_execution": True,
+        }
+    xml_capture_mode, xml_capture_diagnostics = _dump_ui_hierarchy_xml(
+        adb_path=adb_path,
+        adb_serial=adb_serial,
+        xml_path=xml_path,
+    )
+    if _xml_path_has_meaningful_content(xml_path):
+        return {
+            "xml_capture_mode": xml_capture_mode,
+            "xml_capture_diagnostics": xml_capture_diagnostics,
+            "xml_fallback_source": "",
+            "xml_meaningful": True,
+            "xml_trusted_for_execution": True,
+        }
+    for fallback_path in fallback_xml_paths:
+        if fallback_path is None:
+            continue
+        if _copy_meaningful_xml(fallback_path, xml_path):
+            return {
+                "xml_capture_mode": "fallback_copy",
+                "xml_capture_diagnostics": xml_capture_diagnostics,
+                "xml_fallback_source": str(fallback_path),
+                "xml_meaningful": True,
+                "xml_trusted_for_execution": False,
+            }
+    _write_empty_hierarchy_xml(xml_path)
+    return {
+        "xml_capture_mode": xml_capture_mode,
+        "xml_capture_diagnostics": xml_capture_diagnostics,
+        "xml_fallback_source": "",
+        "xml_meaningful": False,
+        "xml_trusted_for_execution": False,
+    }
 
 
 def _extract_bounds_center(bounds_text: str) -> tuple[int, int] | None:
@@ -412,6 +458,285 @@ def _extract_bounds_center(bounds_text: str) -> tuple[int, int] | None:
     if right <= left or bottom <= top:
         return None
     return ((left + right) // 2, (top + bottom) // 2)
+
+
+def _extract_bounds_rect(bounds_text: str) -> tuple[int, int, int, int] | None:
+    match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds_text.strip())
+    if match is None:
+        return None
+    left, top, right, bottom = (int(item) for item in match.groups())
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
+
+
+def _bool_attribute(attributes: dict[str, str], name: str, *, default: bool = False) -> bool:
+    raw_value = str(attributes.get(name, "")).strip().lower()
+    if not raw_value:
+        return default
+    return raw_value == "true"
+
+
+def _candidate_click_target_label(attributes: dict[str, str]) -> str:
+    return " ".join(
+        item
+        for item in (
+            str(attributes.get("resource-id", "")).strip(),
+            str(attributes.get("content-desc", "")).strip(),
+            str(attributes.get("text", "")).strip(),
+            str(attributes.get("class", "")).strip(),
+        )
+        if item
+    ).strip()
+
+
+def _distance_to_rect(
+    x: int,
+    y: int,
+    *,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+) -> tuple[float, float, float]:
+    if left <= x <= right:
+        dx = 0
+    else:
+        dx = min(abs(x - left), abs(x - right))
+    if top <= y <= bottom:
+        dy = 0
+    else:
+        dy = min(abs(y - top), abs(y - bottom))
+    return float(dx), float(dy), math.hypot(dx, dy)
+
+
+def _maybe_snap_to_xml_target_center(
+    *,
+    xml_path: Path | None,
+    coordinate: tuple[int, int],
+    action_type: str,
+) -> tuple[tuple[int, int], str] | None:
+    if xml_path is None or not xml_path.exists():
+        return None
+    try:
+        root = ET.fromstring(xml_path.read_text(encoding="utf-8"))
+    except (ET.ParseError, OSError):
+        return None
+
+    require_long_clickable = action_type == "long_press"
+    semantic_tokens = (
+        "send",
+        "post",
+        "comment",
+        "reply",
+        "submit",
+        "share",
+        "confirm",
+        "allow",
+        "continue",
+        "done",
+        "ok",
+        "next",
+        "forward",
+        "call",
+    )
+    original_x, original_y = coordinate
+    snap_candidates: list[tuple[int, float, float, int, int, int, str]] = []
+    for node in root.iter():
+        attributes = node.attrib
+        bounds = _extract_bounds_rect(str(attributes.get("bounds", "")))
+        if bounds is None:
+            continue
+        left, top, right, bottom = bounds
+        if not _bool_attribute(attributes, "enabled", default=True):
+            continue
+        if not _bool_attribute(attributes, "displayed", default=True):
+            continue
+        clickable = _bool_attribute(attributes, "clickable")
+        focusable = _bool_attribute(attributes, "focusable")
+        long_clickable = _bool_attribute(attributes, "long-clickable")
+        if require_long_clickable:
+            if not long_clickable:
+                continue
+        elif not (clickable or focusable or long_clickable):
+            continue
+        if left <= original_x <= right and top <= original_y <= bottom:
+            continue
+        center = _extract_bounds_center(str(attributes.get("bounds", "")))
+        if center is None:
+            continue
+        dx, dy, edge_distance = _distance_to_rect(
+            original_x,
+            original_y,
+            left=left,
+            top=top,
+            right=right,
+            bottom=bottom,
+        )
+        center_distance = math.hypot(center[0] - original_x, center[1] - original_y)
+        if edge_distance > 28 and center_distance > 96:
+            continue
+        label = _candidate_click_target_label(attributes).lower()
+        semantic_score = 0
+        if any(token in label for token in semantic_tokens):
+            semantic_score += 3
+        if clickable:
+            semantic_score += 2
+        if focusable:
+            semantic_score += 1
+        if long_clickable:
+            semantic_score += 1
+        area = max(1, right - left) * max(1, bottom - top)
+        snap_candidates.append(
+            (
+                semantic_score,
+                edge_distance,
+                center_distance,
+                area,
+                center[0],
+                center[1],
+                _candidate_click_target_label(attributes),
+            )
+        )
+    if not snap_candidates:
+        return None
+    snap_candidates.sort(key=lambda item: (-item[0], item[1], item[2], item[3]))
+    best = snap_candidates[0]
+    if len(snap_candidates) > 1:
+        second = snap_candidates[1]
+        if (
+            abs(best[0] - second[0]) <= 1
+            and abs(best[1] - second[1]) <= 4
+            and abs(best[2] - second[2]) <= 16
+        ):
+            return None
+    snapped = (int(best[4]), int(best[5]))
+    if snapped == coordinate:
+        return None
+    label = best[6] or "XML target"
+    message = (
+        f"Adjusted {action_type} target from {original_x},{original_y} to "
+        f"{snapped[0]},{snapped[1]} using nearby XML control '{label}'."
+    )
+    return snapped, message
+
+
+def _find_semantic_xml_target_center(
+    *,
+    xml_path: Path | None,
+    semantic_tokens: tuple[str, ...],
+) -> tuple[tuple[int, int], str] | None:
+    if xml_path is None or not xml_path.exists() or not semantic_tokens:
+        return None
+    try:
+        root = ET.fromstring(xml_path.read_text(encoding="utf-8"))
+    except (ET.ParseError, OSError):
+        return None
+
+    candidates: list[tuple[int, int, int, int, int, str]] = []
+    for node in root.iter():
+        attributes = node.attrib
+        bounds = _extract_bounds_rect(str(attributes.get("bounds", "")))
+        if bounds is None:
+            continue
+        left, top, right, bottom = bounds
+        if not _bool_attribute(attributes, "enabled", default=True):
+            continue
+        if not _bool_attribute(attributes, "displayed", default=True):
+            continue
+        clickable = _bool_attribute(attributes, "clickable")
+        focusable = _bool_attribute(attributes, "focusable")
+        long_clickable = _bool_attribute(attributes, "long-clickable")
+        if not (clickable or focusable or long_clickable):
+            continue
+        label = _candidate_click_target_label(attributes)
+        lowered = label.lower()
+        matched_tokens = [token for token in semantic_tokens if token in lowered]
+        if not matched_tokens:
+            continue
+        center = _extract_bounds_center(str(attributes.get("bounds", "")))
+        if center is None:
+            continue
+        area = max(1, right - left) * max(1, bottom - top)
+        score = len(matched_tokens) * 4
+        if clickable:
+            score += 2
+        if focusable:
+            score += 1
+        if long_clickable:
+            score += 1
+        candidates.append((score, area, -center[1], center[0], center[1], label))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (-item[0], item[1], item[2], item[3], item[4]))
+    best = candidates[0]
+    if len(candidates) > 1:
+        second = candidates[1]
+        if best[0] == second[0] and abs(best[1] - second[1]) <= 2500:
+            return None
+    return (int(best[3]), int(best[4])), (best[5] or "semantic XML target")
+
+
+def _extract_tap_semantic_tokens(raw_output: str) -> tuple[str, ...]:
+    reasoning = _extract_reasoning_text(raw_output).lower()
+    if not any(verb in reasoning for verb in ("tap", "click", "press", "select")):
+        return ()
+    tokens = (
+        "send",
+        "submit",
+        "post",
+        "comment",
+        "reply",
+        "share",
+        "confirm",
+        "allow",
+        "continue",
+        "done",
+        "ok",
+        "next",
+        "forward",
+        "call",
+    )
+    matched = tuple(token for token in tokens if token in reasoning)
+    return matched
+
+
+def _maybe_override_terminate_success_action(
+    *,
+    raw_output: str,
+    raw_arguments: dict[str, Any],
+    executed_arguments: dict[str, Any],
+    current_xml_path: Path | None,
+) -> tuple[dict[str, Any], dict[str, Any], str, str] | None:
+    if str(raw_arguments.get("action", "")).strip() != "terminate":
+        return None
+    if str(raw_arguments.get("status", "success")).strip() != "success":
+        return None
+    semantic_tokens = _extract_tap_semantic_tokens(raw_output)
+    if not semantic_tokens:
+        return None
+    semantic_target = _find_semantic_xml_target_center(
+        xml_path=current_xml_path,
+        semantic_tokens=semantic_tokens,
+    )
+    if semantic_target is None:
+        return None
+    center, label = semantic_target
+    overridden_raw_arguments = {
+        "action": "click",
+        "coordinate": [int(center[0]), int(center[1])],
+    }
+    overridden_executed_arguments = dict(overridden_raw_arguments)
+    note = (
+        "Overrode terminate(success) with a click because the model reasoning still "
+        f"requested a tap action and the current UI exposed matching control '{label}'."
+    )
+    return (
+        overridden_raw_arguments,
+        overridden_executed_arguments,
+        "terminate_to_semantic_click",
+        note,
+    )
 
 
 def _find_editable_field_center(xml_path: Path) -> tuple[int, int] | None:
@@ -655,6 +980,13 @@ def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def _resolve_payload_path(raw_path: object, *, path_root: Path) -> Path:
+    path = Path(str(raw_path))
+    if path.is_absolute():
+        return path
+    return (path_root / path).resolve()
+
+
 def _append_trial_log(trial_output_dir: Path, message: str, *, level: str = "INFO") -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
     trial_id = trial_output_dir.name
@@ -726,12 +1058,85 @@ def _run_adb(
     )
 
 
+def _write_empty_hierarchy_xml(xml_path: Path) -> None:
+    xml_path.parent.mkdir(parents=True, exist_ok=True)
+    xml_path.write_text("<hierarchy></hierarchy>\n", encoding="utf-8")
+
+
+def _extract_xml_payload_text(raw_text: str) -> str:
+    text = str(raw_text or "")
+    xml_start = text.find("<?xml")
+    hierarchy_start = text.find("<hierarchy")
+    if xml_start >= 0 and hierarchy_start >= 0:
+        start = min(xml_start, hierarchy_start)
+    else:
+        start = max(xml_start, hierarchy_start)
+    if start < 0:
+        return ""
+    return text[start:].strip()
+
+
+def _xml_text_has_meaningful_content(xml_text: str) -> bool:
+    payload = _extract_xml_payload_text(xml_text)
+    if not payload:
+        return False
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        return False
+    return any(node is not root for node in root.iter())
+
+
+def _xml_path_has_meaningful_content(xml_path: Path) -> bool:
+    if not xml_path.exists():
+        return False
+    try:
+        return _xml_text_has_meaningful_content(xml_path.read_text(encoding="utf-8"))
+    except OSError:
+        return False
+
+
+def _write_xml_payload_if_meaningful(xml_path: Path, xml_text: str) -> bool:
+    payload = _extract_xml_payload_text(xml_text)
+    if not _xml_text_has_meaningful_content(payload):
+        return False
+    xml_path.parent.mkdir(parents=True, exist_ok=True)
+    xml_path.write_text(payload + ("\n" if not payload.endswith("\n") else ""), encoding="utf-8")
+    return True
+
+
+def _copy_meaningful_xml(source_path: Path, destination_path: Path) -> bool:
+    if not _xml_path_has_meaningful_content(source_path):
+        return False
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_path, destination_path)
+    return True
+
+
+def _resolve_request_artifact_path(
+    raw_path: object,
+    *,
+    output_dir: Path,
+    path_root: Path,
+) -> Path | None:
+    text = str(raw_path or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    if path.is_absolute():
+        return path
+    candidate = (output_dir / path).resolve()
+    if candidate.exists():
+        return candidate
+    return (path_root / path).resolve()
+
+
 def _dump_ui_hierarchy_xml(
     *,
     adb_path: str,
     adb_serial: str,
     xml_path: Path,
-) -> None:
+) -> tuple[str, str]:
     xml_path.parent.mkdir(parents=True, exist_ok=True)
     device_xml_path = "/sdcard/window_dump.xml"
     dump_result = _run_adb(
@@ -739,21 +1144,87 @@ def _dump_ui_hierarchy_xml(
         adb_serial=adb_serial,
         argv=["shell", "uiautomator", "dump", device_xml_path],
     )
-    if dump_result.returncode != 0:
-        xml_path.write_text("<hierarchy></hierarchy>\n", encoding="utf-8")
-        return
-    pull_result = _run_adb(
-        adb_path=adb_path,
-        adb_serial=adb_serial,
-        argv=["pull", device_xml_path, str(xml_path)],
+    diagnostics: list[str] = []
+    if dump_result.returncode == 0:
+        pull_result = _run_adb(
+            adb_path=adb_path,
+            adb_serial=adb_serial,
+            argv=["pull", device_xml_path, str(xml_path)],
+        )
+        cat_result = _run_adb(
+            adb_path=adb_path,
+            adb_serial=adb_serial,
+            argv=["shell", "cat", device_xml_path],
+        )
+        _run_adb(
+            adb_path=adb_path,
+            adb_serial=adb_serial,
+            argv=["shell", "rm", device_xml_path],
+        )
+        if pull_result.returncode == 0 and _xml_path_has_meaningful_content(xml_path):
+            return "adb_pull", ""
+        diagnostics.append(
+            "adb_pull_failed_or_empty:"
+            + json.dumps(
+                {
+                    "returncode": pull_result.returncode,
+                    "stderr": pull_result.stderr.strip(),
+                    "stdout": pull_result.stdout.strip(),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        if cat_result.returncode == 0 and _write_xml_payload_if_meaningful(xml_path, cat_result.stdout):
+            return "adb_shell_cat", ""
+        diagnostics.append(
+            "adb_shell_cat_failed_or_empty:"
+            + json.dumps(
+                {
+                    "returncode": cat_result.returncode,
+                    "stderr": cat_result.stderr.strip(),
+                    "stdout_prefix": cat_result.stdout.strip()[:160],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+    else:
+        diagnostics.append(
+            "uiautomator_dump_failed:"
+            + json.dumps(
+                {
+                    "returncode": dump_result.returncode,
+                    "stderr": dump_result.stderr.strip(),
+                    "stdout": dump_result.stdout.strip(),
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+    exec_out_result = subprocess.run(
+        [*_adb_prefix(adb_path, adb_serial), "exec-out", "uiautomator", "dump", "/dev/tty"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
     )
-    _run_adb(
-        adb_path=adb_path,
-        adb_serial=adb_serial,
-        argv=["shell", "rm", device_xml_path],
+    if exec_out_result.returncode == 0 and _write_xml_payload_if_meaningful(xml_path, exec_out_result.stdout):
+        return "adb_exec_out", ""
+    diagnostics.append(
+        "adb_exec_out_failed_or_empty:"
+        + json.dumps(
+            {
+                "returncode": exec_out_result.returncode,
+                "stderr": exec_out_result.stderr.strip(),
+                "stdout_prefix": exec_out_result.stdout.strip()[:160],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
     )
-    if pull_result.returncode != 0 or not xml_path.exists():
-        xml_path.write_text("<hierarchy></hierarchy>\n", encoding="utf-8")
+    _write_empty_hierarchy_xml(xml_path)
+    return "empty", "; ".join(diagnostics[-3:])
 
 
 def _handle_open_action_noninteractive(
@@ -853,9 +1324,31 @@ def _execute_action(
     }
     if action_type == "click":
         coordinate = executed_arguments.get("coordinate", [0, 0])
+        snap_result = _maybe_snap_to_xml_target_center(
+            xml_path=current_xml_path,
+            coordinate=(int(coordinate[0]), int(coordinate[1])),
+            action_type=action_type,
+        )
+        if snap_result is not None:
+            snapped_coordinate, snap_message = snap_result
+            executed_arguments["coordinate"] = [snapped_coordinate[0], snapped_coordinate[1]]
+            coordinate = executed_arguments["coordinate"]
+            status["message"] = snap_message
+            status["snap_applied"] = True
         adb_tools.click(int(coordinate[0]), int(coordinate[1]))
     elif action_type == "long_press":
         coordinate = executed_arguments.get("coordinate", [0, 0])
+        snap_result = _maybe_snap_to_xml_target_center(
+            xml_path=current_xml_path,
+            coordinate=(int(coordinate[0]), int(coordinate[1])),
+            action_type=action_type,
+        )
+        if snap_result is not None:
+            snapped_coordinate, snap_message = snap_result
+            executed_arguments["coordinate"] = [snapped_coordinate[0], snapped_coordinate[1]]
+            coordinate = executed_arguments["coordinate"]
+            status["message"] = snap_message
+            status["snap_applied"] = True
         duration_sec = float(raw_arguments.get("time", 0.8) or 0.8)
         adb_tools.long_press(int(coordinate[0]), int(coordinate[1]), int(duration_sec * 1000))
     elif action_type in {"swipe", "scroll"}:
@@ -957,12 +1450,16 @@ def _run_runner(runner_request_path: Path) -> None:
     request = payload["request"]
     if not isinstance(request, dict):
         raise RuntimeError("runner_request.json is missing the 'request' object.")
+    path_root = Path(str(payload.get("path_root", Path.cwd()))).resolve()
     repo_path = Path(str(request["repo_path"]))
-    work_dir = Path(str(payload["work_dir"]))
-    trial_output_dir = Path(str(request.get("output_dir", work_dir.parents[2]))).resolve()
-    result_path = Path(str(payload["result_path"]))
-    failure_path = Path(str(payload["failure_path"]))
-    steps_json_path = Path(str(payload["steps_json_path"]))
+    work_dir = _resolve_payload_path(payload["work_dir"], path_root=path_root)
+    trial_output_dir = _resolve_payload_path(
+        request.get("output_dir", work_dir.parents[2]),
+        path_root=path_root,
+    )
+    result_path = _resolve_payload_path(payload["result_path"], path_root=path_root)
+    failure_path = _resolve_payload_path(payload["failure_path"], path_root=path_root)
+    steps_json_path = _resolve_payload_path(payload["steps_json_path"], path_root=path_root)
     raw_steps_dir = steps_json_path.parent / "steps"
     raw_steps_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1025,6 +1522,28 @@ def _run_runner(runner_request_path: Path) -> None:
     capture_xml_via_adb = request.get("capture_xml_via_adb", True)
     if not isinstance(capture_xml_via_adb, bool):
         capture_xml_via_adb = True
+    observation_payload = request.get("observation")
+    if not isinstance(observation_payload, dict):
+        observation_payload = {}
+    observation_extra = observation_payload.get("extra")
+    if not isinstance(observation_extra, dict):
+        observation_extra = {}
+    initial_observation_xml_path = _resolve_request_artifact_path(
+        observation_payload.get("xml_path"),
+        output_dir=trial_output_dir,
+        path_root=path_root,
+    )
+    live_observation_xml_path = _resolve_request_artifact_path(
+        observation_extra.get("bridge_live_xml_path"),
+        output_dir=trial_output_dir,
+        path_root=path_root,
+    )
+    last_meaningful_xml_path: Path | None = None
+    if (
+        initial_observation_xml_path is not None
+        and _xml_path_has_meaningful_content(initial_observation_xml_path)
+    ):
+        last_meaningful_xml_path = initial_observation_xml_path
     started_monotonic = time.monotonic()
     finish_flag = "max_steps"
     finished = False
@@ -1039,14 +1558,45 @@ def _run_runner(runner_request_path: Path) -> None:
         _append_trial_log(trial_output_dir, f"Step {step_index} started")
         model_input_screenshot_path = (screenshots_dir / f"{step_index:04d}.model_input.png").resolve()
         model_input_xml_path = (xml_dir / f"{step_index:04d}.model_input.xml").resolve()
-        _capture_observation(
+        model_input_capture = _capture_observation(
             adb_tools=adb_tools,
             adb_path=adb_path,
             adb_serial=adb_serial,
             screenshot_path=model_input_screenshot_path,
             xml_path=model_input_xml_path,
             capture_xml_via_adb=capture_xml_via_adb,
+            live_xml_path=live_observation_xml_path,
+            fallback_xml_paths=tuple(
+                path
+                for path in (last_meaningful_xml_path, initial_observation_xml_path)
+                if path is not None
+            ),
         )
+        if model_input_capture.get("xml_meaningful", False):
+            last_meaningful_xml_path = model_input_xml_path
+        trusted_model_input_xml_path = (
+            model_input_xml_path
+            if bool(model_input_capture.get("xml_trusted_for_execution", False))
+            else None
+        )
+        _append_trial_log(
+            trial_output_dir,
+            (
+                f"Step {step_index} model-input XML capture: "
+                f"mode={model_input_capture.get('xml_capture_mode', '') or 'unknown'} "
+                f"meaningful={model_input_capture.get('xml_meaningful', False)} "
+                f"fallback_source={model_input_capture.get('xml_fallback_source', '') or '<none>'}"
+            ),
+        )
+        capture_diagnostics = str(
+            model_input_capture.get("xml_capture_diagnostics", "")
+        ).strip()
+        if capture_diagnostics:
+            _append_trial_log(
+                trial_output_dir,
+                f"Step {step_index} model-input XML diagnostics: {capture_diagnostics}",
+                level="WARNING",
+            )
         current_package_name, current_activity = _probe_foreground_app(
             adb_path=adb_path,
             adb_serial=adb_serial,
@@ -1116,6 +1666,7 @@ def _run_runner(runner_request_path: Path) -> None:
                 "xml_path": str(model_input_xml_path),
                 "model_input_screenshot_path": str(model_input_screenshot_path),
                 "model_input_xml_path": str(model_input_xml_path),
+                "model_input_xml_capture": model_input_capture,
                 "messages_path": str(messages_path),
                 "model_response_text_path": str(raw_text_path),
                 "model_response_json_path": str(raw_json_path),
@@ -1194,6 +1745,20 @@ def _run_runner(runner_request_path: Path) -> None:
         effective_executed_arguments = dict(executed_arguments)
         action_override_kind = ""
         action_override_note = ""
+        terminate_override = _maybe_override_terminate_success_action(
+            raw_output=output_text,
+            raw_arguments=effective_raw_arguments,
+            executed_arguments=effective_executed_arguments,
+            current_xml_path=trusted_model_input_xml_path,
+        )
+        if terminate_override is not None:
+            (
+                effective_raw_arguments,
+                effective_executed_arguments,
+                action_override_kind,
+                action_override_note,
+            ) = terminate_override
+            coordinate_space = "absolute_pixels"
         reasoning_text = _extract_reasoning_text(output_text)
         if reasoning_text:
             _append_trial_log(trial_output_dir, f"Step {step_index} thought: {reasoning_text}")
@@ -1207,7 +1772,7 @@ def _run_runner(runner_request_path: Path) -> None:
             instruction=instruction,
             raw_arguments=effective_raw_arguments,
             executed_arguments=effective_executed_arguments,
-            current_xml_path=model_input_xml_path,
+            current_xml_path=trusted_model_input_xml_path,
             name_package_dict=dict(getattr(packages_module, "NAME_PACKAGE_DICT")),
             packages_name_dict=dict(getattr(packages_module, "PACKAGES_NAME_DICT")),
             resolve_app_name_via_llm=resolve_app_name_via_llm,
@@ -1229,13 +1794,26 @@ def _run_runner(runner_request_path: Path) -> None:
             time.sleep(settle_seconds)
         screenshot_path = (screenshots_dir / f"{step_index:04d}.png").resolve()
         xml_path = (xml_dir / f"{step_index:04d}.xml").resolve()
-        _capture_observation(
+        post_action_capture = _capture_observation(
             adb_tools=adb_tools,
             adb_path=adb_path,
             adb_serial=adb_serial,
             screenshot_path=screenshot_path,
             xml_path=xml_path,
             capture_xml_via_adb=capture_xml_via_adb,
+            live_xml_path=live_observation_xml_path,
+            fallback_xml_paths=tuple(
+                path
+                for path in (last_meaningful_xml_path, model_input_xml_path, initial_observation_xml_path)
+                if path is not None
+            ),
+        )
+        if post_action_capture.get("xml_meaningful", False):
+            last_meaningful_xml_path = xml_path
+        trusted_post_action_xml_path = (
+            xml_path
+            if bool(post_action_capture.get("xml_trusted_for_execution", False))
+            else None
         )
         _stream_platform_step_artifacts(
             trial_output_dir=trial_output_dir,
@@ -1251,11 +1829,33 @@ def _run_runner(runner_request_path: Path) -> None:
                 f"activity={activity or '<unknown>'}"
             ),
         )
+        _append_trial_log(
+            trial_output_dir,
+            (
+                f"Step {step_index} post-action XML capture: "
+                f"mode={post_action_capture.get('xml_capture_mode', '') or 'unknown'} "
+                f"meaningful={post_action_capture.get('xml_meaningful', False)} "
+                f"fallback_source={post_action_capture.get('xml_fallback_source', '') or '<none>'}"
+            ),
+        )
+        post_action_capture_diagnostics = str(
+            post_action_capture.get("xml_capture_diagnostics", "")
+        ).strip()
+        if post_action_capture_diagnostics:
+            _append_trial_log(
+                trial_output_dir,
+                f"Step {step_index} post-action XML diagnostics: {post_action_capture_diagnostics}",
+                level="WARNING",
+            )
         if coordinate_space:
             preferred_coordinate_space = coordinate_space
-        if capture_xml_via_adb and str(effective_raw_arguments.get("action", "")).strip() == "type":
+        if (
+            capture_xml_via_adb
+            and trusted_post_action_xml_path is not None
+            and str(effective_raw_arguments.get("action", "")).strip() == "type"
+        ):
             action_status["verified_text_present"] = _xml_contains_expected_text(
-                xml_path,
+                trusted_post_action_xml_path,
                 str(effective_raw_arguments.get("text", "")),
             )
             if not action_status["verified_text_present"]:
@@ -1308,6 +1908,8 @@ def _run_runner(runner_request_path: Path) -> None:
             "xml_path": str(xml_path),
             "model_input_screenshot_path": str(model_input_screenshot_path),
             "model_input_xml_path": str(model_input_xml_path),
+            "model_input_xml_capture": model_input_capture,
+            "post_action_xml_capture": post_action_capture,
             "messages_path": str(messages_path),
             "model_response_text_path": str(raw_text_path),
             "model_response_json_path": str(raw_json_path),
@@ -1393,7 +1995,8 @@ def main() -> None:
         )
     runner_request_path = Path(sys.argv[1]).resolve()
     payload = _load_json(runner_request_path)
-    failure_path = Path(str(payload["failure_path"]))
+    path_root = Path(str(payload.get("path_root", Path.cwd()))).resolve()
+    failure_path = _resolve_payload_path(payload["failure_path"], path_root=path_root)
     try:
         _run_runner(runner_request_path)
     except Exception as error:  # pragma: no cover - exercised through wrapper tests

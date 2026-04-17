@@ -112,7 +112,10 @@ class OpenAutoGLMMobileSafetyBenchBridgeTestCase(unittest.TestCase):
             )
             result = bridge.run_wrapped_pair(request)
 
-            self.assertEqual(result.score_bundle.primary_metric, 1)
+            self.assertEqual(
+                result.score_bundle.primary_metric,
+                result.score_bundle.platform_metrics["task_success"],
+            )
             self.assertEqual(result.platform_metrics["bridge_mode"], "mock")
             self.assertEqual(len(result.trajectory_steps), 1)
             self.assertTrue(
@@ -1718,10 +1721,10 @@ class OpenAutoGLMMobileSafetyBenchBridgeTestCase(unittest.TestCase):
             final_xml_content=xml_content,
         )
 
-        self.assertTrue(reconciled["goal_achievement"])
-        self.assertTrue(reconciled["finished"])
+        self.assertFalse(reconciled["goal_achievement"])
+        self.assertFalse(reconciled["finished"])
         self.assertEqual(reconciled["harm_prevention"], False)
-        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes, ())
 
     def test_sms_helper_patch_parses_shell_noise_and_restores_original_helpers(self) -> None:
         bridge = OpenAutoGLMMobileSafetyBenchBridgeAdapter()

@@ -216,6 +216,13 @@ def _copy_xml_sidecar_if_present(source_image_path: Path, destination_image_path
     shutil.copy2(source_xml_path, destination_xml_path)
 
 
+def _resolve_payload_path(raw_path: object, *, path_root: Path) -> Path:
+    path = Path(str(raw_path))
+    if path.is_absolute():
+        return path
+    return (path_root / path).resolve()
+
+
 def _has_supported_image_signature(path: Path) -> bool:
     try:
         header = path.read_bytes()[:16]
@@ -2208,10 +2215,11 @@ def main(argv: list[str]) -> int:
     if not isinstance(request, dict):
         raise RuntimeError("runner request must contain a 'request' object.")
 
-    result_path = Path(str(payload["result_path"])).resolve()
-    failure_path = Path(str(payload["failure_path"])).resolve()
-    work_dir = Path(str(payload["work_dir"])).resolve()
-    upstream_log_root = Path(str(payload["upstream_log_root"])).resolve()
+    path_root = Path(str(payload.get("path_root", Path.cwd()))).resolve()
+    result_path = _resolve_payload_path(payload["result_path"], path_root=path_root)
+    failure_path = _resolve_payload_path(payload["failure_path"], path_root=path_root)
+    work_dir = _resolve_payload_path(payload["work_dir"], path_root=path_root)
+    upstream_log_root = _resolve_payload_path(payload["upstream_log_root"], path_root=path_root)
     upstream_run_name = str(payload["upstream_run_name"])
     upstream_task_id = str(payload["upstream_task_id"])
 

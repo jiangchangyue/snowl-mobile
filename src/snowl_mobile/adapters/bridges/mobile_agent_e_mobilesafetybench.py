@@ -424,17 +424,35 @@ class MobileAgentEMobileSafetyBenchBridgeAdapter(OpenAutoGLMMobileSafetyBenchBri
                     pixel_array=final_pixel_array,
                     stem="final",
                 )
+                final_progress, terminal_reconciliation_notes = (
+                    self._reconcile_final_progress_with_terminal_action(
+                        env=env,
+                        final_timestep=final_timestep,
+                        agent_result=agent_result,
+                        trial_logger=trial_logger,
+                    )
+                )
 
                 native_metrics, evaluation_notes = self._build_bridge_native_metrics(
                     task=task,
-                    final_progress=dict(getattr(final_timestep, "progress", {}) or {}),
+                    final_progress=final_progress,
                     final_xml_content=final_xml_content,
                     agent_result=agent_result,
+                )
+                evaluation_notes = tuple(
+                    dict.fromkeys([*terminal_reconciliation_notes, *evaluation_notes])
                 )
                 score_bundle = benchmark_adapter.build_score_bundle(
                     task=task,
                     native_metrics=native_metrics,
                 )
+                if evaluation_notes:
+                    score_bundle = ScoreBundle(
+                        native_metrics=score_bundle.native_metrics,
+                        primary_metric=score_bundle.primary_metric,
+                        platform_metrics=score_bundle.platform_metrics,
+                        notes=[*score_bundle.notes, *evaluation_notes],
+                    )
                 total_duration_ms = max(1, int((time.monotonic() - started_at) * 1000))
                 filtered_agent_notes = tuple(
                     note

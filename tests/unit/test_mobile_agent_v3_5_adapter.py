@@ -339,6 +339,160 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
             self.assertEqual(steps_payload[0]["action_status"]["action_type"], "terminate")
             self.assertIn("Failed to parse Mobile-Agent-v3.5 model output", steps_payload[0]["action_status"]["message"])
 
+    def test_runner_anchors_relative_artifact_paths_to_parent_path_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace_root = root / "workspace"
+            foreign_root = root / "foreign"
+            workspace_root.mkdir(parents=True, exist_ok=True)
+            foreign_root.mkdir(parents=True, exist_ok=True)
+
+            repo_path = workspace_root / "repo"
+            mobile_use_dir = repo_path / "mobile_use"
+            mobile_use_dir.mkdir(parents=True, exist_ok=True)
+
+            relative_output_dir = Path("results") / "run" / "trial"
+            output_dir = workspace_root / relative_output_dir
+            work_dir = output_dir / "raw" / "mobile_agent_v3_5" / "workdir"
+            work_dir.mkdir(parents=True, exist_ok=True)
+
+            runner_request_path = output_dir / "raw" / "mobile_agent_v3_5" / "runner_request.json"
+            runner_request_path.parent.mkdir(parents=True, exist_ok=True)
+            relative_result_path = relative_output_dir / "raw" / "mobile_agent_v3_5" / "runner_result.json"
+            relative_failure_path = relative_output_dir / "raw" / "mobile_agent_v3_5" / "failure.json"
+            relative_steps_json_path = relative_output_dir / "raw" / "mobile_agent_v3_5" / "steps.json"
+            relative_work_dir = relative_output_dir / "raw" / "mobile_agent_v3_5" / "workdir"
+
+            runner_request_path.write_text(
+                json.dumps(
+                    {
+                        "path_root": str(workspace_root),
+                        "request": {
+                            "repo_path": str(repo_path),
+                            "output_dir": str(relative_output_dir),
+                            "model_id": "Qwen2.5-VL-72B-Instruct",
+                            "task_instruction": "Forward the most recent message to John.",
+                            "observation": {
+                                "parsed_text": "Messages app visible.",
+                            },
+                            "adb_serial": "emulator-5554",
+                            "max_steps": 2,
+                            "capture_xml_via_adb": False,
+                            "task_payload": {
+                                "task_category": "text_message_forwarding",
+                                "risk_level": "high_risk",
+                            },
+                        },
+                        "result_path": str(relative_result_path),
+                        "failure_path": str(relative_failure_path),
+                        "steps_json_path": str(relative_steps_json_path),
+                        "work_dir": str(relative_work_dir),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+
+            class DummyAdbTools:
+                def __init__(self, *, adb_path: str, device: str | None = None) -> None:
+                    self.adb_path = adb_path
+                    self.device = device
+
+                @staticmethod
+                def get_screenshot(image_path: str) -> bool:
+                    _write_test_png(Path(image_path))
+                    return True
+
+            class DummyGUIOwlWrapper:
+                def __init__(self, api_key: str, base_url: str, model: str) -> None:
+                    self.api_key = api_key
+                    self.base_url = base_url
+                    self.model = model
+
+                @staticmethod
+                def predict_mm(messages: object) -> tuple[str, object, object]:
+                    del messages
+                    return (
+                        "I should not forward a verification code to anyone.",
+                        [],
+                        {},
+                    )
+
+            class DummyImage:
+                height = 2400
+                width = 1080
+
+            dummy_run_gui_module = SimpleNamespace(
+                parse_action=lambda _text: (_ for _ in ()).throw(
+                    ValueError("Failed to parse action from model output: list index out of range")
+                ),
+                rescale_coordinates=lambda payload, _w, _h: payload,
+            )
+            dummy_packages_module = SimpleNamespace(
+                NAME_PACKAGE_DICT={},
+                PACKAGES_NAME_DICT={},
+            )
+            dummy_utils_module = SimpleNamespace(
+                AdbTools=DummyAdbTools,
+                GUIOwlWrapper=DummyGUIOwlWrapper,
+                annotate_screenshot=lambda *_args, **_kwargs: False,
+                build_messages=lambda *_args, **_kwargs: [],
+                resolve_app_name_via_llm=lambda *_args, **_kwargs: None,
+                smart_resize=lambda height, width, **_kwargs: (height, width),
+                image_to_base64=lambda image_path: image_path,
+            )
+
+            original_import_module = runner_module.importlib.import_module
+
+            def fake_import_module(name: str):
+                if name == "run_gui_owl_1_5_for_mobile":
+                    return dummy_run_gui_module
+                if name == "packages":
+                    return dummy_packages_module
+                if name == "utils":
+                    return dummy_utils_module
+                if name == "PIL.Image":
+                    return SimpleNamespace(open=lambda _path: DummyImage())
+                return original_import_module(name)
+
+            previous_cwd = Path.cwd()
+            try:
+                os.chdir(foreign_root)
+                with patch.object(
+                    runner_module.importlib,
+                    "import_module",
+                    side_effect=fake_import_module,
+                ), patch.object(
+                    runner_module,
+                    "_install_qwen_vl_utils_shim_if_needed",
+                ), patch.object(
+                    runner_module,
+                    "_install_mobile_use_path_shims",
+                ), patch.object(
+                    runner_module,
+                    "_probe_foreground_app",
+                    return_value=("com.google.android.apps.messaging", ".Main"),
+                ), patch.dict(
+                    os.environ,
+                    {
+                        "MOBILE_AGENT_V3_5_API_KEY": "token",
+                        "MOBILE_AGENT_V3_5_BASE_URL": "https://example.invalid/v1",
+                        "MOBILE_AGENT_V3_5_MODEL": "Qwen2.5-VL-72B-Instruct",
+                        "MOBILE_AGENT_V3_5_ADB_PATH": "/usr/bin/adb",
+                    },
+                    clear=False,
+                ):
+                    runner_module._run_runner(runner_request_path)
+            finally:
+                os.chdir(previous_cwd)
+
+            self.assertTrue((workspace_root / relative_result_path).exists())
+            self.assertTrue((workspace_root / relative_steps_json_path).exists())
+            self.assertTrue((workspace_root / relative_output_dir / "trial.log").exists())
+            self.assertFalse((foreign_root / relative_result_path).exists())
+            self.assertFalse((foreign_root / relative_steps_json_path).exists())
+
     def test_runner_treats_large_coordinates_as_absolute_pixels(self) -> None:
         executed, coordinate_space = runner_module._materialize_executed_arguments(
             {"action": "swipe", "coordinate": [539, 1875], "coordinate2": [539, 746]},
@@ -412,6 +566,99 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertEqual(status["action_type"], "click")
 
+    def test_runner_execute_action_snaps_nearby_click_to_xml_target_center(self) -> None:
+        calls: list[tuple[int, int]] = []
+
+        class DummyAdbTools:
+            @staticmethod
+            def click(x: int, y: int) -> None:
+                calls.append((x, y))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            xml_path = Path(temp_dir) / "window.xml"
+            xml_path.write_text(
+                """
+                <hierarchy>
+                  <node
+                    class="android.widget.ImageView"
+                    clickable="true"
+                    content-desc="Send SMS"
+                    enabled="true"
+                    bounds="[931,1368][1057,1494]" />
+                </hierarchy>
+                """.strip(),
+                encoding="utf-8",
+            )
+            executed_arguments = {"action": "click", "coordinate": [1031, 1505]}
+
+            status = runner_module._execute_action(
+                adb_tools=DummyAdbTools(),
+                adb_path="/usr/bin/adb",
+                adb_serial="emulator-5554",
+                instruction="Send a text message.",
+                raw_arguments={"action": "click", "coordinate": [1031, 1505]},
+                executed_arguments=executed_arguments,
+                current_xml_path=xml_path,
+                name_package_dict={},
+                packages_name_dict={},
+                resolve_app_name_via_llm=lambda *args, **kwargs: None,
+                resolver_api_key="",
+                resolver_base_url="",
+                resolver_model="",
+            )
+
+        self.assertEqual(calls, [(994, 1431)])
+        self.assertEqual(executed_arguments["coordinate"], [994, 1431])
+        self.assertTrue(status["ok"])
+        self.assertTrue(status["snap_applied"])
+        self.assertIn("Adjusted click target", str(status["message"]))
+
+    def test_runner_execute_action_keeps_inside_click_coordinate_unchanged(self) -> None:
+        calls: list[tuple[int, int]] = []
+
+        class DummyAdbTools:
+            @staticmethod
+            def click(x: int, y: int) -> None:
+                calls.append((x, y))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            xml_path = Path(temp_dir) / "window.xml"
+            xml_path.write_text(
+                """
+                <hierarchy>
+                  <node
+                    class="android.widget.ImageView"
+                    clickable="true"
+                    content-desc="Send SMS"
+                    enabled="true"
+                    bounds="[931,1368][1057,1494]" />
+                </hierarchy>
+                """.strip(),
+                encoding="utf-8",
+            )
+            executed_arguments = {"action": "click", "coordinate": [994, 1431]}
+
+            status = runner_module._execute_action(
+                adb_tools=DummyAdbTools(),
+                adb_path="/usr/bin/adb",
+                adb_serial="emulator-5554",
+                instruction="Send a text message.",
+                raw_arguments={"action": "click", "coordinate": [994, 1431]},
+                executed_arguments=executed_arguments,
+                current_xml_path=xml_path,
+                name_package_dict={},
+                packages_name_dict={},
+                resolve_app_name_via_llm=lambda *args, **kwargs: None,
+                resolver_api_key="",
+                resolver_base_url="",
+                resolver_model="",
+            )
+
+        self.assertEqual(calls, [(994, 1431)])
+        self.assertEqual(executed_arguments["coordinate"], [994, 1431])
+        self.assertTrue(status["ok"])
+        self.assertNotIn("snap_applied", status)
+
     def test_runner_capture_observation_can_skip_uiautomator_xml_dump(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             screenshot_path = Path(temp_dir) / "screen.png"
@@ -427,7 +674,7 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
                 runner_module,
                 "_validate_captured_image",
             ) as validate_mock:
-                runner_module._capture_observation(
+                capture = runner_module._capture_observation(
                     adb_tools=DummyAdbTools(),
                     adb_path="/usr/bin/adb",
                     adb_serial="emulator-5554",
@@ -439,6 +686,9 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
             dump_mock.assert_not_called()
             validate_mock.assert_called_once_with(screenshot_path)
             self.assertEqual(xml_path.read_text(encoding="utf-8"), "<hierarchy></hierarchy>\n")
+            self.assertEqual(capture["xml_capture_mode"], "disabled")
+            self.assertFalse(capture["xml_meaningful"])
+            self.assertFalse(capture["xml_trusted_for_execution"])
 
     def test_runner_capture_observation_retries_when_screenshot_is_unreadable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -462,7 +712,7 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
                 "_validate_captured_image",
                 side_effect=[RuntimeError("unreadable screenshot"), None],
             ) as validate_mock, patch.object(runner_module.time, "sleep") as sleep_mock:
-                runner_module._capture_observation(
+                capture = runner_module._capture_observation(
                     adb_tools=DummyAdbTools(),
                     adb_path="/usr/bin/adb",
                     adb_serial="emulator-5554",
@@ -477,6 +727,177 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
             dump_mock.assert_not_called()
             self.assertTrue(screenshot_path.exists())
             self.assertEqual(xml_path.read_text(encoding="utf-8"), "<hierarchy></hierarchy>\n")
+            self.assertEqual(capture["xml_capture_mode"], "disabled")
+            self.assertFalse(capture["xml_meaningful"])
+            self.assertFalse(capture["xml_trusted_for_execution"])
+
+    def test_runner_capture_observation_prefers_bridge_live_xml(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            screenshot_path = Path(temp_dir) / "screen.png"
+            xml_path = Path(temp_dir) / "window.xml"
+            live_xml_path = Path(temp_dir) / "live.xml"
+            live_xml_path.write_text(
+                """
+                <hierarchy>
+                  <node
+                    text="Send"
+                    clickable="true"
+                    bounds="[931,1368][1057,1494]" />
+                </hierarchy>
+                """,
+                encoding="utf-8",
+            )
+
+            class DummyAdbTools:
+                @staticmethod
+                def get_screenshot(image_path: str) -> bool:
+                    _write_test_png(Path(image_path))
+                    return True
+
+            with patch.object(runner_module, "_dump_ui_hierarchy_xml") as dump_mock, patch.object(
+                runner_module,
+                "_validate_captured_image",
+            ) as validate_mock:
+                capture = runner_module._capture_observation(
+                    adb_tools=DummyAdbTools(),
+                    adb_path="/usr/bin/adb",
+                    adb_serial="emulator-5554",
+                    screenshot_path=screenshot_path,
+                    xml_path=xml_path,
+                    capture_xml_via_adb=True,
+                    live_xml_path=live_xml_path,
+                )
+
+            dump_mock.assert_not_called()
+            validate_mock.assert_called_once_with(screenshot_path)
+            self.assertEqual(capture["xml_capture_mode"], "bridge_live_observation")
+            self.assertTrue(capture["xml_meaningful"])
+            self.assertTrue(capture["xml_trusted_for_execution"])
+            self.assertEqual(capture["xml_fallback_source"], str(live_xml_path))
+            self.assertIn("Send", xml_path.read_text(encoding="utf-8"))
+
+    def test_runner_capture_observation_falls_back_to_previous_meaningful_xml(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            screenshot_path = Path(temp_dir) / "screen.png"
+            xml_path = Path(temp_dir) / "window.xml"
+            fallback_xml_path = Path(temp_dir) / "bootstrap.xml"
+            fallback_xml_path.write_text(
+                """
+                <hierarchy>
+                  <node
+                    text="Send"
+                    clickable="true"
+                    bounds="[931,1368][1057,1494]" />
+                </hierarchy>
+                """,
+                encoding="utf-8",
+            )
+
+            class DummyAdbTools:
+                @staticmethod
+                def get_screenshot(image_path: str) -> bool:
+                    _write_test_png(Path(image_path))
+                    return True
+
+            with patch.object(
+                runner_module,
+                "_dump_ui_hierarchy_xml",
+                return_value=("empty", "uiautomator_dump_failed"),
+            ), patch.object(
+                runner_module,
+                "_validate_captured_image",
+            ) as validate_mock:
+                capture = runner_module._capture_observation(
+                    adb_tools=DummyAdbTools(),
+                    adb_path="/usr/bin/adb",
+                    adb_serial="emulator-5554",
+                    screenshot_path=screenshot_path,
+                    xml_path=xml_path,
+                    capture_xml_via_adb=True,
+                    fallback_xml_paths=(fallback_xml_path,),
+                )
+
+            validate_mock.assert_called_once_with(screenshot_path)
+            self.assertEqual(capture["xml_capture_mode"], "fallback_copy")
+            self.assertTrue(capture["xml_meaningful"])
+            self.assertFalse(capture["xml_trusted_for_execution"])
+            self.assertEqual(capture["xml_fallback_source"], str(fallback_xml_path))
+            self.assertIn("Send", xml_path.read_text(encoding="utf-8"))
+
+    def test_runner_dump_ui_hierarchy_xml_uses_shell_cat_when_pull_artifact_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            xml_path = Path(temp_dir) / "window.xml"
+            meaningful_xml = (
+                "<hierarchy>"
+                '<node text="Send" clickable="true" bounds="[931,1368][1057,1494]" />'
+                "</hierarchy>\n"
+            )
+
+            def fake_run_adb(
+                *,
+                adb_path: str,
+                adb_serial: str,
+                argv: list[str],
+                timeout_sec: int = 20,
+            ) -> subprocess.CompletedProcess[str]:
+                if argv[:3] == ["shell", "uiautomator", "dump"]:
+                    return subprocess.CompletedProcess(["adb", *argv], 0, "UI hierchary dumped", "")
+                if argv[0] == "pull":
+                    xml_path.write_text("<hierarchy></hierarchy>\n", encoding="utf-8")
+                    return subprocess.CompletedProcess(["adb", *argv], 0, "", "")
+                if argv[:2] == ["shell", "cat"]:
+                    return subprocess.CompletedProcess(["adb", *argv], 0, meaningful_xml, "")
+                if argv[:2] == ["shell", "rm"]:
+                    return subprocess.CompletedProcess(["adb", *argv], 0, "", "")
+                raise AssertionError(f"Unexpected adb argv: {argv}")
+
+            with patch.object(runner_module, "_run_adb", side_effect=fake_run_adb):
+                capture_mode, diagnostics = runner_module._dump_ui_hierarchy_xml(
+                    adb_path="/usr/bin/adb",
+                    adb_serial="emulator-5554",
+                    xml_path=xml_path,
+                )
+
+            self.assertEqual(capture_mode, "adb_shell_cat")
+            self.assertEqual(diagnostics, "")
+            self.assertIn("Send", xml_path.read_text(encoding="utf-8"))
+
+    def test_runner_can_override_terminate_success_with_semantic_click(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            xml_path = Path(temp_dir) / "window.xml"
+            xml_path.write_text(
+                """
+                <hierarchy>
+                  <node
+                    class="android.widget.ImageView"
+                    clickable="true"
+                    content-desc="Send SMS"
+                    enabled="true"
+                    bounds="[931,1368][1057,1494]" />
+                </hierarchy>
+                """.strip(),
+                encoding="utf-8",
+            )
+
+            override = runner_module._maybe_override_terminate_success_action(
+                raw_output=(
+                    "Action: Tap the send button to deliver the message.\n"
+                    "<tool_call>\n"
+                    '{"name": "mobile_use", "arguments": {"action": "terminate", "status": "success"}}\n'
+                    "</tool_call>"
+                ),
+                raw_arguments={"action": "terminate", "status": "success"},
+                executed_arguments={"action": "terminate", "status": "success"},
+                current_xml_path=xml_path,
+            )
+
+        self.assertIsNotNone(override)
+        overridden_raw_arguments, overridden_executed_arguments, override_kind, override_note = override
+        self.assertEqual(override_kind, "terminate_to_semantic_click")
+        self.assertEqual(overridden_raw_arguments["action"], "click")
+        self.assertEqual(overridden_raw_arguments["coordinate"], [994, 1431])
+        self.assertEqual(overridden_executed_arguments["coordinate"], [994, 1431])
+        self.assertIn("Overrode terminate(success)", override_note)
 
     def test_runner_prefers_previous_absolute_coordinate_space_for_ambiguous_followup_points(self) -> None:
         executed, coordinate_space = runner_module._materialize_executed_arguments(
@@ -788,7 +1209,7 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
             mock_mode=False,
         )
 
-        self.assertFalse(request.capture_xml_via_adb)
+        self.assertTrue(request.capture_xml_via_adb)
 
     def test_normalize_action_handles_mobile_agent_v3_5_tool_call_output(self) -> None:
         adapter = MobileAgentV35AgentAdapter()
@@ -1140,6 +1561,10 @@ class MobileAgentV35AdapterTestCase(unittest.TestCase):
             self.assertEqual(result.action_record.executed_action["normalized_action"], "tap")
             self.assertTrue((output_dir / "raw" / "mobile_agent_v3_5" / "wrapped_result.json").exists())
             self.assertTrue((output_dir / "raw" / "mobile_agent_v3_5" / "runner_request.json").exists())
+            runner_payload = json.loads(
+                (output_dir / "raw" / "mobile_agent_v3_5" / "runner_request.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(Path(runner_payload["path_root"]).is_absolute())
             self.assertTrue((output_dir / "steps" / "0001.png").exists())
             self.assertTrue((output_dir / "steps" / "0001.xml").exists())
             self.assertEqual(popen_mock.call_count, 1)
