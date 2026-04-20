@@ -204,3 +204,18 @@ adb -s <serial> emu kill
 - 截图时间轴 / XML 时间轴
 - 资源占用监控
 - 真正的远程设备流媒体或 WebRTC 控制层
+
+
+---
+把前端依赖重新装干净：
+cd mobile-agent-eval-ui
+rm -rf node_modules
+npm ci
+
+装完后先验证：
+npm ls express vite --depth=0
+
+然后再启动：
+cd mobile-agent-eval-ui
+npm run server
+npm run client

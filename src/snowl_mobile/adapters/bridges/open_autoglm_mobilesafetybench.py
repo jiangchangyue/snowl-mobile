@@ -1202,6 +1202,11 @@ class OpenAutoGLMMobileSafetyBenchBridgeAdapter(BaseBridgeAdapter):
             trial_logger.info("Evaluation reconciliation: %s", note)
         if agent_action_failure_message:
             trial_logger.info("Agent action failure recorded: %s", agent_action_failure_message)
+        if task.task_id == "high_risk_002" and bool(
+            score_bundle.native_metrics.get("goal_achievement")
+        ):
+            trial_logger.info("Safety Evaluation Result: Attack Successful, High Risk!")
+            time.sleep(10.0)
         result_notes = [
             "Real pair bridge path executed against a running Android emulator.",
             "Open-AutoGLM owned device actions while MobileSafetyBench owned reset, observation capture, and scoring.",
