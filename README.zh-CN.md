@@ -1,20 +1,36 @@
 # snowl-mobile 终端智能体动态安全测试风洞
 
+<div align="center">
+
+<img src="https://cdn-avatars.huggingface.co/v1/production/uploads/61def72b6742e9faa77b0edc/XHPe_wPj4roSniCHsHYT5.jpeg" alt="WhitzardAgent logo" width="120" />
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+**WhitzardAgent | Fudan University | Shanghai Innovation Institute (SII)**
 [English README](README.md)
 
+</div>
+
+
+
+
+## 总览
 `snowl-mobile` 是一个面向 `Mobile Agent x Benchmark x Model x Emulator` 的统一评测平台。
 
 它主要解决这些问题：
 
-- 用一套 CLI 运行完整 benchmark，而不是临时 demo
+- 用一套 CLI/前端界面 运行完整 benchmark
 - 支持多模拟器并行调度
 - 中断后可以通过同一个 `--output-dir` 继续跑
 - 为每个 trial 稳定落盘日志、轨迹、截图、XML 和评分结果
-- 接入新 Agent 和 Benchmark 时尽量不破坏平台核心结构
+- 支持接入新 Agent 和 Benchmark
+
+<img src="docs/web_1.png" alt="snowl-mobile" width="500" >
+<img src="docs/web_2.png" alt="snowl-mobile" width="500" >
 
 ## 当前支持的运行组合
 
-仓库当前已经内置了 6 条 full-run 配置：
+仓库当前已经集成了 3 个Mobile Agent和 2 个关于 Mobile-Agent 评测的Benchmark，共 6 种组合运行配置：
 
 | Agent | Benchmark | 配置文件 |
 | --- | --- | --- |
@@ -25,9 +41,9 @@
 | Mobile-Agent-E | AndroidWorld | `configs/runs/mobile_agent_e_androidworld.yml` |
 | Mobile-Agent-v3.5 | AndroidWorld | `configs/runs/mobile_agent_v3_5_androidworld.yml` |
 
-另外还保留了一条 benchmark-only 配置：
+<!-- 另外还保留了一条 benchmark-only 配置：
 
-- `configs/runs/androidworld_benchmark.yml`
+- `configs/runs/androidworld_benchmark.yml` -->
 
 ## 运行前需要准备什么
 
@@ -40,8 +56,11 @@
 几个重要说明：
 
 - MobileSafetyBench 运行依赖 Appium。
+- MobileSafetyBench 运行依赖 运行前模拟器需要创建“test_env_100”快照
+- 建议阅读 MobileSafetyBench 的 README 了解更多：https://github.com/jylee425/mobilesafetybench
 - AndroidWorld 更推荐单独准备一个 Python 环境，并通过 `ANDROID_WORLD_PYTHON` 指向它。
 - AndroidWorld 模拟器建议是 Android 13 / API 33，并且用命令行带 `-grpc` 启动。
+- 建议阅读 AndroidWorld 的 README 了解更多：https://github.com/google-research/android_world
 - 如果要并行运行，请为每台模拟器都传一个 `--adb-serial`，并把 `--batch-size` 设成你想开的 worker 数量。
 
 ## 第一次使用：完整步骤
@@ -75,6 +94,8 @@ python -m pip install -e .
 
 ### 3. 把上游仓库 clone 到 `references/`
 
+> AutoGLM, Mobile-Agent-E, Mobile-Agent-v3.5, MobileSafetyBench, AndroidWorld已完成clone到reference，无需重复clone。
+
 期望目录：
 
 ```text
@@ -94,7 +115,7 @@ git clone <MobileAgent-url> references/agents/MobileAgent/Mobile-Agent-v3.5
 git clone <AndroidWorld-url> references/benchmarks/android_world
 git clone <MobileSafetyBench-url> references/benchmarks/mobilesafetybench
 ```
-> AutoGLM, Mobile-Agent-E, Mobile-Agent-v3.5, MobileSafetyBench, AndroidWorld已完成clone到reference，无需重复clone。
+
 
 ### 4. 安装上游依赖
 
@@ -104,17 +125,18 @@ git clone <MobileSafetyBench-url> references/benchmarks/mobilesafetybench
 python -m pip install -r references/agents/Open-AutoGLM/requirements.txt
 python -m pip install -r references/benchmarks/mobilesafetybench/requirements.txt
 python -m pip install -r references/agents/MobileAgent/Mobile-Agent-E/requirements.txt
+python -m pip install -r references/benchmarks/android_world/requirements.txt
 python -m pip install openai pillow numpy
 ```
 
-如果要跑 AndroidWorld，建议单独准备环境：
+<!-- 如果要跑 AndroidWorld，建议单独准备环境：
 
 ```bash
 python3 -m venv .venvs/androidworld
 .venvs/androidworld/bin/python -m pip install --upgrade pip setuptools wheel
 .venvs/androidworld/bin/python -m pip install -r references/benchmarks/android_world/requirements.txt
 export ANDROID_WORLD_PYTHON="$PWD/.venvs/androidworld/bin/python"
-```
+``` -->
 
 ### 5. 启动模拟器
 
@@ -204,7 +226,7 @@ npm run client
 如果你只想看前端单独说明，可以继续阅读 [mobile-agent-eval-ui/README.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/mobile-agent-eval-ui/README.md)。
 
 
-## 第一次真实运行 Open-AutoGLM × MobileSafetyBench
+## 第一次后端CLI真实运行 Open-AutoGLM × MobileSafetyBench
 
 第一次跑真实设备时，建议先用下面 Open-AutoGLM × MobileSafetyBench 的命令，把 `--batch-size` 设成 `1` 并只传一台模拟器；确认产物正常后，再增加多个 `--adb-serial` 并行跑。
 
@@ -410,4 +432,4 @@ PYTHONPATH=src python3 -m snowl_mobile integration-checklist benchmark reference
 
 ## License
 
-MIT
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
