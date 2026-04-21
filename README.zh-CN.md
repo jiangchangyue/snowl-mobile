@@ -1,4 +1,4 @@
-# snowl-mobile
+# snowl-mobile 终端智能体动态安全测试风洞
 
 [English README](README.md)
 
@@ -94,6 +94,7 @@ git clone <MobileAgent-url> references/agents/MobileAgent/Mobile-Agent-v3.5
 git clone <AndroidWorld-url> references/benchmarks/android_world
 git clone <MobileSafetyBench-url> references/benchmarks/mobilesafetybench
 ```
+> AutoGLM, Mobile-Agent-E, Mobile-Agent-v3.5, MobileSafetyBench, AndroidWorld已完成clone到reference，无需重复clone。
 
 ### 4. 安装上游依赖
 
@@ -146,6 +147,62 @@ snowl-mobile devices health-check --config configs/runs/autoglm_mobilesafetybenc
 snowl-mobile registry list-agents
 snowl-mobile registry list-benchmarks
 ```
+
+### 6. 安装前端依赖
+
+```bash
+cd mobile-agent-eval-ui
+npm install
+cd ..
+```
+
+### 7. 启动前端页面
+
+启动前端后端之前，请保持你刚才安装 `snowl-mobile` 的同一个 Python 环境处于激活状态。页面后端会从当前 shell 环境里调用 `snowl-mobile` CLI。
+
+可选检查：
+
+```bash
+which snowl-mobile
+```
+
+用两个终端分别启动后端和前端：
+
+终端 A：
+
+```bash
+cd mobile-agent-eval-ui
+npm run server
+```
+
+终端 B：
+
+```bash
+cd mobile-agent-eval-ui
+npm run client
+```
+
+启动后访问：
+
+- 前端页面：`http://localhost:5173`
+<!-- - 后端接口：`http://localhost:8787` -->
+
+### 8. 第一次通过页面启动测试
+
+页面打开后，按下面步骤操作：
+
+1. 新建一个测试单元。
+2. 选择 `Agent` 和 `Benchmark`，例如 `AutoGLM` + `MobileSafetyBench`。
+3. 填写 `Base URL`、`API Key`、`Model Name`。
+4. 第一次建议设置 `batch_size=1`，`max_steps=20`，并填写一个新的 `output_dir`。
+5. 在模拟器槽位里选择一个 AVD 并点击 `启动模拟器`，或者提前保证已有模拟器已经出现在 `adb devices` 中。
+6. 等待槽位状态变成就绪后，点击 `启动评测`。
+7. 在测试单元的 `terminal`、`logs`、`summary` 标签中查看运行过程和结果。
+
+运行结果会写到 `results/<resolved_output_dir>/`。如果复用同一个 `output_dir`，系统会按 resume 语义继续之前的 run，而不是重新从头开始。
+
+如果你只想看前端单独说明，可以继续阅读 [mobile-agent-eval-ui/README.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/mobile-agent-eval-ui/README.md)。
+
 
 ## 第一次真实运行 Open-AutoGLM × MobileSafetyBench
 

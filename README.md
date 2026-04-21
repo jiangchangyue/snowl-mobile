@@ -1,4 +1,4 @@
-# snowl-mobile
+# snowl-mobile 终端智能体动态安全测试风洞
 
 [Chinese README](README.zh-CN.md)
 
@@ -32,6 +32,7 @@ There is also one benchmark-only config:
 ## What You Need
 
 - Python `>= 3.11`
+- Node.js `>= 18` and `npm` if you want to use the web UI
 - Android SDK and `adb`
 - Appium for MobileSafetyBench runs
 - at least one running Android emulator
@@ -146,6 +147,61 @@ snowl-mobile devices health-check --config configs/runs/autoglm_mobilesafetybenc
 snowl-mobile registry list-agents
 snowl-mobile registry list-benchmarks
 ```
+
+### 6. Install the web UI dependencies
+
+```bash
+cd mobile-agent-eval-ui
+npm install
+cd ..
+```
+
+### 7. Start the web UI
+
+Keep the same Python environment active when starting the UI backend. The UI server launches the `snowl-mobile` CLI from the current shell environment.
+
+Optional check:
+
+```bash
+which snowl-mobile
+```
+
+Start the backend and frontend in two terminals:
+
+Terminal A:
+
+```bash
+cd mobile-agent-eval-ui
+npm run server
+```
+
+Terminal B:
+
+```bash
+cd mobile-agent-eval-ui
+npm run client
+```
+
+Then open:
+
+- frontend: `http://localhost:5173`
+<!-- - backend API: `http://localhost:8787` -->
+
+### 8. Start your first test from the page
+
+After the page opens:
+
+1. Add one evaluation unit.
+2. Choose an `Agent` and a `Benchmark`, for example `AutoGLM` + `MobileSafetyBench`.
+3. Fill in `Base URL`, `API Key`, and `Model Name`.
+4. Set `batch_size=1`, choose a fresh `output_dir`, and keep `max_steps=20` for the first run.
+5. In the emulator slot, select an AVD and click `Start Emulator`, or make sure an already-running emulator is visible in `adb devices`.
+6. Wait until the slot becomes ready, then click `Start Evaluation`.
+7. Watch progress in the unit's `terminal`, `logs`, and `summary` tabs.
+
+Results are written under `results/<resolved_output_dir>/`. Reusing the same `output_dir` resumes an interrupted run instead of starting a brand-new one.
+
+For UI-only details, see [mobile-agent-eval-ui/README.md](/Users/jcy/Documents/Phd/fdu/project/mobile_agent/mobile-eval/snowl-mobile/mobile-agent-eval-ui/README.md).
 
 ## First Real Run: Open-AutoGLM x MobileSafetyBench
 

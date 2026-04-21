@@ -1,26 +1,60 @@
+# OS and editor noise
 .DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python caches and build artifacts
 __pycache__/
 *.py[cod]
 *.so
 .coverage
-.claude/
+.coverage.*
+htmlcov/
+coverage/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
-.venvs/
+.hypothesis/
+.tox/
+.nox/
+.claude/
 .venv/
-.env
-.env.*
+.venvs/
 build/
 dist/
 *.egg-info/
-runs/*
-!runs/.gitkeep
-.vscode/
-tmp/
-Qwen2.5-vl-72B/
-results/
-docs/snowl-mobile_项目设计说明书_v0.1.docx
-mobile-agent-eval-ui/server/.bridge-state/
 
+# Local environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+.python-version
+
+# Frontend and JS tooling artifacts
+node_modules/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+/mobile-agent-eval-ui/server/.bridge-state/
+
+# Repo-local runtime outputs
+/runs/*
+!/runs/.gitkeep
+/results/
+/tmp/
+/Qwen2.5-vl-72B/
+
+# Local-only documents
+/docs/snowl-mobile_项目设计说明书_v0.1.docx
+docs/snowl-mobile_项目设计说明书_v0.1.docx
+
+# Git scratch files
 **/tmp.git-*
+copy-bak.txt
