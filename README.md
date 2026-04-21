@@ -23,8 +23,8 @@ It mainly solves these problems:
 - stably saving logs, trajectories, screenshots, XML, and scores for every trial
 - integrating new agents and benchmarks with low friction
 
-<img src="docs/web_1.png" alt="snowl-mobile" width="500" >
-<img src="docs/web_2.png" alt="snowl-mobile" width="500" >
+<img src="docs/web_1.png" alt="snowl-mobile" width="888" >
+<img src="docs/web_2.png" alt="snowl-mobile" width="888" >
 
 ## Current Supported Run Combinations
 

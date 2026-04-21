@@ -25,8 +25,8 @@
 - 为每个 trial 稳定落盘日志、轨迹、截图、XML 和评分结果
 - 支持接入新 Agent 和 Benchmark
 
-<img src="docs/web_1.png" alt="snowl-mobile" width="500" >
-<img src="docs/web_2.png" alt="snowl-mobile" width="500" >
+<img src="docs/web_1.png" alt="snowl-mobile" width="888" >
+<img src="docs/web_2.png" alt="snowl-mobile" width="888" >
 
 ## 当前支持的运行组合
 
