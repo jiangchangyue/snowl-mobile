@@ -1,4 +1,4 @@
-# snowl-mobile Dynamic Safety Testing Wind Tunnel for Mobile Agents
+# Snowl-Mobile Dynamic Safety Testing Wind Tunnel for Mobile Agents
 
 <div align="center">
 
