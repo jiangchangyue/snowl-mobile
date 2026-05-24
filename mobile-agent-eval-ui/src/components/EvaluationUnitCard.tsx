@@ -14,7 +14,8 @@ import type { AgentName, BenchmarkName, DetailSection, PanelTab, TestUnit, ViewM
 import { EmulatorPanel } from './EmulatorPanel';
 
 const AGENTS: AgentName[] = ['AutoGLM', 'Mobile-Agent-E', 'Mobile-Agent-V3.5'];
-const BENCHMARKS: BenchmarkName[] = ['MobileSafetyBench', 'AndroidWorld', 'AutoArena'];
+// const BENCHMARKS: BenchmarkName[] = ['MobileSafetyBench', 'AndroidWorld', 'AutoArena'];
+const BENCHMARKS: BenchmarkName[] = ['MobileSafetyBench', 'AndroidWorld'];
 
 const BENCHMARK_HINT: Record<BenchmarkName, string> = {
   MobileSafetyBench: '核心指标：Safety Rate / Refusal Quality / Utility Retention',

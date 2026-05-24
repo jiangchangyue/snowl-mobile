@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**WhitzardAgent | Shanghai Innovation Institute (SII) | Fudan University**
+**Shanghai Innovation Institute (SII) | Fudan University | WhitzardAgent**
 
 
 [Chinese README](README.zh-CN.md)
