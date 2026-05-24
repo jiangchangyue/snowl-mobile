@@ -72,7 +72,8 @@ export function DashboardHeader({
         </div>
         <div className="stat-card">
           <div className="stat-label"><Layers3 size={16} /> 已集成基准</div>
-          <div className="stat-value">3</div>
+          {/* <div className="stat-value">3</div> */}
+          <div className="stat-value">2</div>
         </div>
         <div className="stat-card">
           <div className="stat-label"><Activity size={16} /> 运行中单元</div>
